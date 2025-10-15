@@ -64,7 +64,7 @@ def setup_music_commands(bot, music_player):
         if not music_player:
             await ctx.send('⚠️ Music system is still starting up. Please try again in a moment.')
             return
-        await music_player.set_volume(ctx, vol)
+        await music_player.change_volume(ctx, vol)
 
     @bot.command()
     async def leave(ctx):
@@ -195,3 +195,49 @@ def setup_music_commands(bot, music_player):
         
         repeat_text = music_player.get_repeat_text(guild_id)
         await ctx.send(f'🔁 {repeat_text}')
+
+    @bot.command()
+    async def shuffle(ctx):
+        """Toggle shuffle mode"""
+        if not music_player:
+            await ctx.send('⚠️ Music system is still starting up. Please try again in a moment.')
+            return
+        
+        guild_id = ctx.guild.id
+        new_mode = music_player.toggle_shuffle_mode(guild_id)
+        shuffle_text = music_player.get_shuffle_text(guild_id)
+        
+        if new_mode:
+            queue_count = len(music_player.queues.get(guild_id, []))
+            if queue_count > 0:
+                await ctx.send(f'🔀 {shuffle_text} - Shuffled {queue_count} songs!')
+            else:
+                await ctx.send(f'🔀 {shuffle_text} - Next songs will be shuffled!')
+        else:
+            await ctx.send(f'🔀 {shuffle_text}')
+
+    @bot.command()
+    async def testui(ctx):
+        """Test music interface"""
+        if not music_player:
+            await ctx.send('⚠️ Music system is still starting up. Please try again in a moment.')
+            return
+        
+        # Create test song info
+        test_song = {
+            'title': 'Test Song',
+            'author': 'Test Artist',
+            'duration': '3:30',
+            'duration_seconds': 210,
+            'thumbnail': None,
+            'webpage_url': 'https://example.com',
+            'requested_by': str(ctx.author.id)
+        }
+        
+        try:
+            embed, view = await music_player.create_music_interface(ctx, test_song, is_playing=True)
+            await ctx.send(embed=embed, view=view)
+        except Exception as e:
+            await ctx.send(f'❌ Interface test failed: {e}')
+            import traceback
+            traceback.print_exc()

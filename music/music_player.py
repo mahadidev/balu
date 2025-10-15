@@ -2,7 +2,8 @@ import discord
 import asyncio
 import yt_dlp
 import time
-from discord import FFmpegPCMAudio, FFmpegOpusAudio
+import random
+from discord import FFmpegPCMAudio, FFmpegOpusAudio, PCMVolumeTransformer
 
 class MusicPlayer:
     def __init__(self, bot):
@@ -13,6 +14,8 @@ class MusicPlayer:
         self.music_messages = {}  # Store music control messages for each guild
         self.start_times = {}  # Track when songs started playing
         self.repeat_modes = {}  # Track repeat mode for each guild: 0=off, 1=track, 2=queue
+        self.shuffle_modes = {}  # Track shuffle mode for each guild: True/False
+        self.volumes = {}  # Track volume for each guild (0.0-1.0)
         
         # yt-dlp options optimized for speed
         self.ytdl_format_options = {
@@ -87,10 +90,14 @@ class MusicPlayer:
                 del self.current_songs[ctx.guild.id]
             if ctx.guild.id in self.repeat_modes:
                 del self.repeat_modes[ctx.guild.id]
+            if ctx.guild.id in self.shuffle_modes:
+                del self.shuffle_modes[ctx.guild.id]
             if ctx.guild.id in self.start_times:
                 del self.start_times[ctx.guild.id]
             if ctx.guild.id in self.music_messages:
                 del self.music_messages[ctx.guild.id]
+            if ctx.guild.id in self.volumes:
+                del self.volumes[ctx.guild.id]
                 
             await ctx.send('👋 Left voice channel!')
         else:
@@ -381,7 +388,13 @@ class MusicPlayer:
         """Add song to guild queue"""
         if guild_id not in self.queues:
             self.queues[guild_id] = []
-        self.queues[guild_id].append(song_info)
+        
+        # If shuffle is on and there are already songs in queue, insert at random position
+        if self.get_shuffle_mode(guild_id) and self.queues[guild_id]:
+            random_index = random.randint(0, len(self.queues[guild_id]))
+            self.queues[guild_id].insert(random_index, song_info)
+        else:
+            self.queues[guild_id].append(song_info)
 
     async def play_next(self, ctx):
         """Play next song in queue"""
@@ -421,7 +434,10 @@ class MusicPlayer:
                 await self.play_next(ctx)
                 return
             
-            source = FFmpegPCMAudio(audio_url, **self.ffmpeg_options)
+            # Create audio source with volume control
+            base_source = FFmpegPCMAudio(audio_url, **self.ffmpeg_options)
+            volume = self.get_volume(guild_id)
+            source = PCMVolumeTransformer(base_source, volume=volume)
             
             # Only remove from queue and set as current after successful setup
             self.queues[guild_id].pop(0)
@@ -435,22 +451,29 @@ class MusicPlayer:
             ))
 
             # Create and send enhanced music interface
-            embed, view = await self.create_music_interface(ctx, song_info, is_playing=True)
-            
-            # Update or send new music message
-            if guild_id in self.music_messages:
-                try:
-                    # Try to edit existing message
-                    await self.music_messages[guild_id].edit(embed=embed, view=view)
-                except discord.NotFound:
-                    # Message was deleted, send new one
+            try:
+                embed, view = await self.create_music_interface(ctx, song_info, is_playing=True)
+                
+                # Update or send new music message
+                if guild_id in self.music_messages:
+                    try:
+                        # Try to edit existing message
+                        await self.music_messages[guild_id].edit(embed=embed, view=view)
+                    except discord.NotFound:
+                        # Message was deleted, send new one
+                        self.music_messages[guild_id] = await ctx.send(embed=embed, view=view)
+                    except discord.HTTPException:
+                        # Other error, send new message
+                        self.music_messages[guild_id] = await ctx.send(embed=embed, view=view)
+                else:
+                    # Send new message
                     self.music_messages[guild_id] = await ctx.send(embed=embed, view=view)
-                except discord.HTTPException:
-                    # Other error, send new message
-                    self.music_messages[guild_id] = await ctx.send(embed=embed, view=view)
-            else:
-                # Send new message
-                self.music_messages[guild_id] = await ctx.send(embed=embed, view=view)
+            except Exception as interface_error:
+                print(f"Interface creation error: {interface_error}")
+                import traceback
+                traceback.print_exc()
+                # Send simple fallback message
+                await ctx.send(f'🎵 **Now playing:** {song_info["title"]} - `{song_info["duration"]}`')
 
         except Exception as e:
             print(f"Playback error: {e}")
@@ -525,15 +548,23 @@ class MusicPlayer:
         else:
             await ctx.send('❌ Music is not paused!')
 
-    async def set_volume(self, ctx, volume):
+    async def change_volume(self, ctx, volume_percent):
         """Set volume (0-100)"""
-        if volume < 0 or volume > 100:
+        if volume_percent < 0 or volume_percent > 100:
             await ctx.send('❌ Volume must be between 0 and 100!')
             return
-            
-        # Note: FFmpeg volume control is limited in discord.py
-        # For better volume control, you'd need a more complex audio source
-        await ctx.send(f'🔊 Volume set to {volume}% (Note: Volume control is limited)')
+        
+        guild_id = ctx.guild.id
+        volume = volume_percent / 100.0  # Convert to 0.0-1.0
+        self.set_volume(guild_id, volume)
+        
+        # Update current playing audio if there is one
+        voice_client = self.voice_clients.get(guild_id)
+        if voice_client and voice_client.source:
+            if hasattr(voice_client.source, 'volume'):
+                voice_client.source.volume = volume
+        
+        await ctx.send(f'🔊 Volume set to {volume_percent}%')
 
     async def show_queue(self, ctx):
         """Show current queue"""
@@ -590,6 +621,8 @@ class MusicPlayer:
         """Create enhanced music interface with buttons and embed"""
         guild_id = ctx.guild.id
         
+        print(f"Creating interface for guild {guild_id}, song: {song_info.get('title', 'Unknown')}")
+        
         # Create minimal embed design
         embed = discord.Embed(color=0x1DB954 if is_playing else 0xFFA500)
         
@@ -614,6 +647,14 @@ class MusicPlayer:
             repeat_text = self.get_repeat_text(guild_id).replace("Repeat: ", "")
             description += f" • {repeat_text} mode"
         
+        # Add shuffle mode if active
+        if self.get_shuffle_mode(guild_id):
+            description += f" • Shuffle on"
+        
+        # Add volume info
+        volume_percent = self.get_volume_percentage(guild_id)
+        description += f" • Volume {volume_percent}%"
+        
         embed.description = description
         
         # Add thumbnail if available
@@ -623,16 +664,21 @@ class MusicPlayer:
         # Create buttons
         view = MusicControlView(self, ctx.guild.id)
         
-        # Update repeat button after view creation
+        # Update repeat and shuffle buttons after view creation
         repeat_mode = self.get_repeat_mode(guild_id)
+        shuffle_mode = self.get_shuffle_mode(guild_id)
+        
+        # Check if music is currently playing for play/pause button
+        voice_client = self.voice_clients.get(guild_id)
+        is_currently_playing = voice_client and voice_client.is_playing()
+        
         for item in view.children:
-            if hasattr(item, 'emoji') and str(item.emoji) in ["🔁", "🔂"]:
-                item.emoji = self.get_repeat_emoji(guild_id)
-                if repeat_mode == 0:
-                    item.style = discord.ButtonStyle.secondary
-                else:
-                    item.style = discord.ButtonStyle.success
-                break
+            if hasattr(item, 'emoji'):
+                # Set all buttons to primary (purple) style
+                item.style = discord.ButtonStyle.primary
+                # Update repeat button emoji
+                if str(item.emoji) in ["🔁", "🔂"]:
+                    item.emoji = self.get_repeat_emoji(guild_id)
         
         return embed, view
 
@@ -666,6 +712,44 @@ class MusicPlayer:
             return "Repeat: Track"
         else:
             return "Repeat: Queue"
+    
+    def get_shuffle_mode(self, guild_id):
+        """Get current shuffle mode for a guild"""
+        return self.shuffle_modes.get(guild_id, False)
+    
+    def toggle_shuffle_mode(self, guild_id):
+        """Toggle shuffle mode for a guild"""
+        current_mode = self.shuffle_modes.get(guild_id, False)
+        new_mode = not current_mode
+        self.shuffle_modes[guild_id] = new_mode
+        
+        # If turning shuffle on, shuffle the current queue
+        if new_mode and guild_id in self.queues and self.queues[guild_id]:
+            random.shuffle(self.queues[guild_id])
+        
+        return new_mode
+    
+    def get_shuffle_emoji(self, guild_id):
+        """Get emoji for current shuffle mode"""
+        return "🔀" if self.get_shuffle_mode(guild_id) else "🔀"
+    
+    def get_shuffle_text(self, guild_id):
+        """Get text description for current shuffle mode"""
+        return "Shuffle: On" if self.get_shuffle_mode(guild_id) else "Shuffle: Off"
+    
+    def get_volume(self, guild_id):
+        """Get current volume for a guild (0.0-1.0)"""
+        return self.volumes.get(guild_id, 0.5)  # Default 50%
+    
+    def set_volume(self, guild_id, volume):
+        """Set volume for a guild (0.0-1.0)"""
+        volume = max(0.0, min(1.0, volume))  # Clamp between 0 and 1
+        self.volumes[guild_id] = volume
+        return volume
+    
+    def get_volume_percentage(self, guild_id):
+        """Get volume as percentage (0-100)"""
+        return int(self.get_volume(guild_id) * 100)
 
 class MusicControlView(discord.ui.View):
     def __init__(self, music_player, guild_id):
@@ -675,11 +759,11 @@ class MusicControlView(discord.ui.View):
         
         # Update repeat button will be done after view creation
     
-    @discord.ui.button(emoji="⏮️", style=discord.ButtonStyle.secondary, row=0)
+    @discord.ui.button(emoji="⏪", style=discord.ButtonStyle.primary, row=0)
     async def previous_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_message("⏮️ Previous track feature coming soon!", ephemeral=True)
+        await interaction.response.send_message("⏪ Previous track feature coming soon!", ephemeral=True)
     
-    @discord.ui.button(emoji="⏯️", style=discord.ButtonStyle.primary, row=0)
+    @discord.ui.button(emoji="⏸️", style=discord.ButtonStyle.primary, row=0)
     async def play_pause_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         voice_client = self.music_player.voice_clients.get(self.guild_id)
         if not voice_client:
@@ -695,16 +779,16 @@ class MusicControlView(discord.ui.View):
         else:
             await interaction.response.send_message("❌ No music is playing!", ephemeral=True)
     
-    @discord.ui.button(emoji="⏭️", style=discord.ButtonStyle.secondary, row=0)
+    @discord.ui.button(emoji="⏩", style=discord.ButtonStyle.primary, row=0)
     async def skip_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         voice_client = self.music_player.voice_clients.get(self.guild_id)
         if voice_client and voice_client.is_playing():
             voice_client.stop()
-            await interaction.response.send_message("⏭️ Skipped!", ephemeral=True)
+            await interaction.response.send_message("⏩ Skipped!", ephemeral=True)
         else:
             await interaction.response.send_message("❌ No music is playing!", ephemeral=True)
     
-    @discord.ui.button(emoji="⏹️", style=discord.ButtonStyle.danger, row=0)
+    @discord.ui.button(emoji="⏹️", style=discord.ButtonStyle.primary, row=0)
     async def stop_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         voice_client = self.music_player.voice_clients.get(self.guild_id)
         if voice_client:
@@ -718,11 +802,56 @@ class MusicControlView(discord.ui.View):
         else:
             await interaction.response.send_message("❌ Not connected to voice channel!", ephemeral=True)
     
-    @discord.ui.button(emoji="🔀", style=discord.ButtonStyle.secondary, row=1)
-    async def shuffle_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_message("🔀 Shuffle feature coming soon!", ephemeral=True)
+    @discord.ui.button(emoji="❌", style=discord.ButtonStyle.primary, row=0)
+    async def disconnect_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        voice_client = self.music_player.voice_clients.get(self.guild_id)
+        if voice_client:
+            await voice_client.disconnect()
+            del self.music_player.voice_clients[self.guild_id]
+            
+            # Clear queue and current song
+            if self.guild_id in self.music_player.queues:
+                del self.music_player.queues[self.guild_id]
+            if self.guild_id in self.music_player.current_songs:
+                del self.music_player.current_songs[self.guild_id]
+            if self.guild_id in self.music_player.repeat_modes:
+                del self.music_player.repeat_modes[self.guild_id]
+            if self.guild_id in self.music_player.shuffle_modes:
+                del self.music_player.shuffle_modes[self.guild_id]
+            if self.guild_id in self.music_player.start_times:
+                del self.music_player.start_times[self.guild_id]
+            if self.guild_id in self.music_player.music_messages:
+                del self.music_player.music_messages[self.guild_id]
+            if self.guild_id in self.music_player.volumes:
+                del self.music_player.volumes[self.guild_id]
+                
+            await interaction.response.send_message("👋 Left voice channel!", ephemeral=True)
+        else:
+            await interaction.response.send_message("❌ Not connected to voice channel!", ephemeral=True)
     
-    @discord.ui.button(emoji="🔁", style=discord.ButtonStyle.secondary, row=1)
+    @discord.ui.button(emoji="🔄", style=discord.ButtonStyle.primary, row=1)
+    async def shuffle_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        new_mode = self.music_player.toggle_shuffle_mode(self.guild_id)
+        shuffle_text = self.music_player.get_shuffle_text(self.guild_id)
+        
+        # Keep button style as primary (purple)
+        
+        # Update the message with new view
+        try:
+            await interaction.response.edit_message(view=self)
+            if new_mode:
+                queue_count = len(self.music_player.queues.get(self.guild_id, []))
+                await interaction.followup.send(f"🔄 {shuffle_text} - Shuffled {queue_count} songs!", ephemeral=True)
+            else:
+                await interaction.followup.send(f"🔄 {shuffle_text}", ephemeral=True)
+        except discord.errors.InteractionResponded:
+            if new_mode:
+                queue_count = len(self.music_player.queues.get(self.guild_id, []))
+                await interaction.followup.send(f"🔄 {shuffle_text} - Shuffled {queue_count} songs!", ephemeral=True)
+            else:
+                await interaction.followup.send(f"🔄 {shuffle_text}", ephemeral=True)
+    
+    @discord.ui.button(emoji="🔁", style=discord.ButtonStyle.primary, row=1)
     async def repeat_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         new_mode = self.music_player.cycle_repeat_mode(self.guild_id)
         repeat_text = self.music_player.get_repeat_text(self.guild_id)
@@ -730,11 +859,7 @@ class MusicControlView(discord.ui.View):
         # Update button emoji
         button.emoji = self.music_player.get_repeat_emoji(self.guild_id)
         
-        # Update button style based on mode
-        if new_mode == 0:
-            button.style = discord.ButtonStyle.secondary
-        else:
-            button.style = discord.ButtonStyle.success
+        # Keep button style as primary (purple)
         
         # Update the message with new view
         try:
@@ -743,7 +868,7 @@ class MusicControlView(discord.ui.View):
         except discord.errors.InteractionResponded:
             await interaction.followup.send(f"🔁 {repeat_text}", ephemeral=True)
     
-    @discord.ui.button(emoji="📋", style=discord.ButtonStyle.secondary, row=1)
+    @discord.ui.button(emoji="📄", style=discord.ButtonStyle.primary, row=1)
     async def queue_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         guild_id = self.guild_id
         
@@ -784,25 +909,32 @@ class MusicControlView(discord.ui.View):
         embed.description = queue_list
         await interaction.response.send_message(embed=embed, ephemeral=True)
     
-    @discord.ui.button(emoji="❌", style=discord.ButtonStyle.danger, row=1)
-    async def disconnect_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+    @discord.ui.button(emoji="🔉", style=discord.ButtonStyle.primary, row=1)
+    async def volume_down_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        current_volume = self.music_player.get_volume_percentage(self.guild_id)
+        new_volume = max(0, current_volume - 10)
+        
+        volume_decimal = new_volume / 100.0
+        self.music_player.set_volume(self.guild_id, volume_decimal)
+        
+        # Update current playing audio
         voice_client = self.music_player.voice_clients.get(self.guild_id)
-        if voice_client:
-            await voice_client.disconnect()
-            del self.music_player.voice_clients[self.guild_id]
-            
-            # Clear queue and current song
-            if self.guild_id in self.music_player.queues:
-                del self.music_player.queues[self.guild_id]
-            if self.guild_id in self.music_player.current_songs:
-                del self.music_player.current_songs[self.guild_id]
-            if self.guild_id in self.music_player.repeat_modes:
-                del self.music_player.repeat_modes[self.guild_id]
-            if self.guild_id in self.music_player.start_times:
-                del self.music_player.start_times[self.guild_id]
-            if self.guild_id in self.music_player.music_messages:
-                del self.music_player.music_messages[self.guild_id]
-                
-            await interaction.response.send_message("👋 Left voice channel!", ephemeral=True)
-        else:
-            await interaction.response.send_message("❌ Not connected to voice channel!", ephemeral=True)
+        if voice_client and voice_client.source and hasattr(voice_client.source, 'volume'):
+            voice_client.source.volume = volume_decimal
+        
+        await interaction.response.send_message(f"🔉 Volume set to {new_volume}%", ephemeral=True)
+    
+    @discord.ui.button(emoji="🔊", style=discord.ButtonStyle.primary, row=1)
+    async def volume_up_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        current_volume = self.music_player.get_volume_percentage(self.guild_id)
+        new_volume = min(100, current_volume + 10)
+        
+        volume_decimal = new_volume / 100.0
+        self.music_player.set_volume(self.guild_id, volume_decimal)
+        
+        # Update current playing audio
+        voice_client = self.music_player.voice_clients.get(self.guild_id)
+        if voice_client and voice_client.source and hasattr(voice_client.source, 'volume'):
+            voice_client.source.volume = volume_decimal
+        
+        await interaction.response.send_message(f"🔊 Volume set to {new_volume}%", ephemeral=True)
