@@ -17,35 +17,37 @@ class MusicPlayer:
         self.shuffle_modes = {}  # Track shuffle mode for each guild: True/False
         self.volumes = {}  # Track volume for each guild (0.0-1.0)
         
-        # yt-dlp options optimized for speed
+        # yt-dlp options optimized for reliability
         self.ytdl_format_options = {
             'format': 'bestaudio/best',
             'outtmpl': '%(extractor)s-%(id)s-%(title)s.%(ext)s',
             'restrictfilenames': True,
-            'noplaylist': False,  # Allow playlists
+            'noplaylist': False,
             'nocheckcertificate': True,
-            'ignoreerrors': True,  # Skip problematic videos
+            'ignoreerrors': True,
             'logtostderr': False,
             'quiet': True,
             'no_warnings': True,
-            'default_search': 'ytsearch',  # Faster than 'auto'
+            'default_search': 'ytsearch',
             'source_address': '0.0.0.0',
-            'extract_flat': False,  # Get full info for playlist items
-            'retries': 1,  # Reduced for speed
-            'fragment_retries': 1,  # Reduced for speed
-            'socket_timeout': 5,  # Even faster timeout
-            'http_chunk_size': 10485760,  # 10MB chunks for faster download
+            'extract_flat': False,
+            'retries': 3,
+            'fragment_retries': 3,
+            'socket_timeout': 15,
+            'http_chunk_size': 10485760,
+            'cookiefile': None,
+            'age_limit': None,
         }
         
-        # Ultra-fast options for playlist processing
+        # Options for playlist processing
         self.ytdl_fast_options = {
-            'format': 'worst[ext=m4a]/worst',  # Use worst quality for speed
+            'format': 'bestaudio/best',
             'quiet': True,
             'no_warnings': True,
             'extract_flat': False,
             'skip_download': True,
-            'socket_timeout': 3,  # Very fast timeout
-            'retries': 1,  # Single retry for speed
+            'socket_timeout': 10,
+            'retries': 2,
             'default_search': 'ytsearch',
             'ignoreerrors': True,
             'no_check_certificate': True,
@@ -195,7 +197,7 @@ class MusicPlayer:
                 print(f"Attempting to extract info from URL: {url}")
                 info = await asyncio.wait_for(
                     loop.run_in_executor(None, lambda: self.ytdl.extract_info(url, download=False)),
-                    timeout=30.0
+                    timeout=60.0
                 )
                 print(f"Extraction successful. Info type: {type(info)}")
                 if info:
