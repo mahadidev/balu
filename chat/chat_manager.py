@@ -76,24 +76,16 @@ class GlobalChatManager:
         # Get all registered channels
         channels = self.db.get_global_chat_channels()
         
-        # Create embed for the message with larger text
-      
-        embed = discord.Embed(
-            title=f"{original_message.content}",
-            description=f"\n\n{original_message.guild} • {original_message.author.mention}",
-        )
+        # Create plain text message
+        message_content = f"**{original_message.content}**\n\n-# {original_message.guild} • {original_message.author.mention}"
         
         # Handle attachments
         if original_message.attachments:
             attachment = original_message.attachments[0]
             if attachment.content_type and attachment.content_type.startswith('image/'):
-                embed.set_image(url=attachment.url)
+                message_content += f"\n🖼️ Image: {attachment.url}"
             else:
-                embed.add_field(
-                    name="Attachment", 
-                    value=f"[{attachment.filename}]({attachment.url})", 
-                    inline=False
-                )
+                message_content += f"\n📎 Attachment: [{attachment.filename}]({attachment.url})"
         
         # Send to all other channels
         for channel_info in channels:
@@ -115,7 +107,7 @@ class GlobalChatManager:
                 if not channel.permissions_for(guild.me).send_messages:
                     continue
                 
-                await channel.send(embed=embed)
+                await channel.send(message_content)
                 
             except discord.Forbidden:
                 print(f"No permission to send message in {channel_info['guild_name']} - {channel_info['channel_name']}")

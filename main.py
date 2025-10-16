@@ -4,13 +4,11 @@ from discord.ext import commands
 from music.music_player import MusicPlayer
 from move.voice_manager import VoiceManager
 from database.db_manager import DatabaseManager
-from challenges.team_manager import TeamManager
 
 # Import command modules
 from core_commands import setup_core_commands
 from music.commands import setup_music_commands
 from move.commands import setup_voice_commands
-from challenges.commands import setup_team_commands
 from chat.commands import GlobalChatCommands
 
 # Load environment variables
@@ -24,25 +22,22 @@ intents.voice_states = True
 
 bot = commands.Bot(command_prefix='!', intents=intents)
 
-# Initialize music player, voice manager, database, and team manager
+# Initialize music player, voice manager, and database
 music_player = None
 voice_manager = None
 db_manager = None
-team_manager = None
 
 @bot.event
 async def on_ready():
-    global music_player, voice_manager, db_manager, team_manager
+    global music_player, voice_manager, db_manager
     music_player = MusicPlayer(bot)
     voice_manager = VoiceManager(bot)
     db_manager = DatabaseManager()
-    team_manager = TeamManager(bot, db_manager)
     
     # Setup command modules
     setup_core_commands(bot)
     setup_music_commands(bot, music_player)
     setup_voice_commands(bot, voice_manager)
-    setup_team_commands(bot, team_manager)
     
     # Add global chat cog
     await bot.add_cog(GlobalChatCommands(bot))

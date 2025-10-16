@@ -112,35 +112,6 @@ class DatabaseManager:
                 # Column already exists
                 pass
             
-            # Create challenges_categories table
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS challenges_categories (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    name TEXT NOT NULL UNIQUE,
-                    description TEXT,
-                    is_active BOOLEAN DEFAULT TRUE,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            ''')
-            
-            # Insert fixed categories if they don't exist
-            categories = [
-                ('Clash Squad Limited', 'Limited clash squad matches with restricted loadouts'),
-                ('Clash Squad Unlimited', 'Unlimited clash squad matches with full access to weapons'),
-                ('Clash Squad Quantra', 'Quantra-based clash squad battles'),
-                ('Full Map', 'Full battle royale map games'),
-                ('Custom', 'Custom game modes and challenges')
-            ]
-            
-            for category_name, description in categories:
-                try:
-                    cursor.execute('''
-                        INSERT OR IGNORE INTO challenges_categories (name, description)
-                        VALUES (?, ?)
-                    ''', (category_name, description))
-                except sqlite3.IntegrityError:
-                    # Category already exists
-                    pass
             
             # Create global_chat_channels table
             cursor.execute('''
@@ -524,70 +495,6 @@ class DatabaseManager:
             results = cursor.fetchall()
             return [row[0] for row in results]
     
-    def get_challenge_categories(self, active_only=True):
-        """Get all challenge categories"""
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.cursor()
-            
-            if active_only:
-                cursor.execute('''
-                    SELECT id, name, description FROM challenges_categories 
-                    WHERE is_active = TRUE 
-                    ORDER BY id
-                ''')
-            else:
-                cursor.execute('''
-                    SELECT id, name, description FROM challenges_categories 
-                    ORDER BY id
-                ''')
-            
-            results = cursor.fetchall()
-            categories = []
-            
-            for result in results:
-                categories.append({
-                    'id': result[0],
-                    'name': result[1],
-                    'description': result[2]
-                })
-            
-            return categories
-    
-    def get_category_by_id(self, category_id):
-        """Get a specific category by ID"""
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.cursor()
-            cursor.execute('''
-                SELECT id, name, description FROM challenges_categories 
-                WHERE id = ? AND is_active = TRUE
-            ''', (category_id,))
-            
-            result = cursor.fetchone()
-            if result:
-                return {
-                    'id': result[0],
-                    'name': result[1],
-                    'description': result[2]
-                }
-            return None
-    
-    def get_category_by_name(self, category_name):
-        """Get a specific category by name"""
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.cursor()
-            cursor.execute('''
-                SELECT id, name, description FROM challenges_categories 
-                WHERE LOWER(name) = LOWER(?) AND is_active = TRUE
-            ''', (category_name,))
-            
-            result = cursor.fetchone()
-            if result:
-                return {
-                    'id': result[0],
-                    'name': result[1],
-                    'description': result[2]
-                }
-            return None
     
     def register_global_chat_channel(self, guild_id, channel_id, guild_name=None, channel_name=None, registered_by=None):
         """Register a channel for global chat"""
