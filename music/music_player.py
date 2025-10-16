@@ -37,20 +37,24 @@ class MusicPlayer:
             'http_chunk_size': 10485760,  # 10MB chunks for faster download
         }
         
-        # Fast options for getting playable URL quickly
+        # Ultra-fast options for playlist processing
         self.ytdl_fast_options = {
-            'format': 'bestaudio[ext=m4a]/bestaudio/best',
+            'format': 'worst[ext=m4a]/worst',  # Use worst quality for speed
             'quiet': True,
             'no_warnings': True,
-            'extract_flat': False,  # Need full info for audio URL
+            'extract_flat': False,
             'skip_download': True,
-            'socket_timeout': 10,  # Increased timeout
-            'retries': 2,
+            'socket_timeout': 3,  # Very fast timeout
+            'retries': 1,  # Single retry for speed
             'default_search': 'ytsearch',
             'ignoreerrors': True,
             'no_check_certificate': True,
             'prefer_insecure': True,
             'age_limit': 999,
+            'http_chunk_size': 1048576,  # 1MB chunks
+            'fragment_retries': 1,
+            'extractor_retries': 1,
+            'file_access_retries': 1,
         }
         
         self.ffmpeg_options = {
@@ -111,10 +115,10 @@ class MusicPlayer:
                 if not preserve_playlist and ('?list=' in search or '&list=' in search):
                     # Extract just the video ID part
                     if 'youtu.be/' in search:
-                        video_id = search.split('youtu.be/')[1].split('?')[0]
+                        video_id = search.split('youtu.be/')[1].split('?')[0].split('&')[0]
                         cleaned_url = f"https://www.youtube.com/watch?v={video_id}"
                     elif 'watch?v=' in search:
-                        video_id = search.split('watch?v=')[1].split('&')[0]
+                        video_id = search.split('watch?v=')[1].split('&')[0].split('#')[0]
                         cleaned_url = f"https://www.youtube.com/watch?v={video_id}"
                     else:
                         cleaned_url = search
@@ -188,17 +192,25 @@ class MusicPlayer:
             loop = asyncio.get_event_loop()
             # Always use regular ytdl for better reliability
             try:
+                print(f"Attempting to extract info from URL: {url}")
                 info = await asyncio.wait_for(
                     loop.run_in_executor(None, lambda: self.ytdl.extract_info(url, download=False)),
                     timeout=30.0
                 )
+                print(f"Extraction successful. Info type: {type(info)}")
+                if info:
+                    print(f"Info keys: {info.keys() if isinstance(info, dict) else 'Not a dict'}")
             except asyncio.TimeoutError:
+                print("Extraction timed out")
                 if hasattr(search_msg, 'edit'):
                     await search_msg.edit(content='❌ Extraction timed out!')
                 else:
                     await ctx.send('❌ Extraction timed out!')
                 return
             except Exception as e:
+                print(f"Extraction error: {e}")
+                import traceback
+                traceback.print_exc()
                 if hasattr(search_msg, 'edit'):
                     await search_msg.edit(content=f'❌ Extraction error: {str(e)[:50]}...')
                 else:
@@ -207,6 +219,7 @@ class MusicPlayer:
             
             # Validate info extraction
             if not info:
+                print("No info returned from extraction")
                 if hasattr(search_msg, 'edit'):
                     await search_msg.edit(content='❌ Could not extract song information!')
                 else:
@@ -254,6 +267,11 @@ class MusicPlayer:
 
     async def add_playlist(self, ctx, playlist_url):
         """Add playlist to queue"""
+        # Join voice channel if not connected
+        if ctx.guild.id not in self.voice_clients:
+            if not await self.join(ctx):
+                return
+        
         await ctx.send('🔄 Getting first song from playlist...')
         
         try:
@@ -274,29 +292,107 @@ class MusicPlayer:
                 
                 await ctx.send(f'📋 Found {len(entries)} songs. Starting first song, loading others...')
                 
-                # Process FIRST song immediately
-                first_entry = entries[0]
+                # Process FIRST song immediately with parallel attempts for speed
+                first_song_played = False
+                
+                # Try first song with lightweight extraction for speed
+                async def try_song_fast(entry, index):
+                    try:
+                        print(f"Processing first song entry: {entry}")
+                        video_url = entry.get('url') or f"https://www.youtube.com/watch?v={entry.get('id')}"
+                        print(f"Video URL: {video_url}")
+                        
+                        # Create lightweight song info first for immediate queueing
+                        duration_sec = int(entry.get('duration', 0) or 0)
+                        song_info = {
+                            'title': entry.get('title', 'Unknown Title'),
+                            'duration': f"{duration_sec//60}:{duration_sec%60:02d}",
+                            'duration_seconds': duration_sec,
+                            'thumbnail': entry.get('thumbnail'),
+                            'author': entry.get('uploader', entry.get('channel', 'Unknown Artist')),
+                            'webpage_url': video_url,
+                            'requested_by': ctx.author.name
+                        }
+                        print(f"Created song info: {song_info['title']}")
+                        return song_info, index
+                        
+                    except Exception as e:
+                        print(f"Error with song {index+1}: {e}")
+                        import traceback
+                        traceback.print_exc()
+                        return None, index
+                
+                # Try first song with fast method
+                tasks = [try_song_fast(entry, i) for i, entry in enumerate(entries[:1])]  # Just try first song
+                
+                # Process first song super fast (no extraction needed)
                 try:
-                    video_url = first_entry.get('url') or f"https://www.youtube.com/watch?v={first_entry.get('id')}"
-                    loop = asyncio.get_event_loop()
-                    detailed_info = await loop.run_in_executor(None, lambda: self.ytdl.extract_info(video_url, download=False))
-                    song_info = self.extract_song_info(detailed_info, ctx.author.name)
-                    self.add_to_queue(ctx.guild.id, song_info)
+                    print(f"Waiting for first song task...")
+                    song_info, song_index = await tasks[0]  # Just get the first one
+                    print(f"Task completed: song_info={song_info}, song_index={song_index}")
                     
-                    # Start playing immediately
-                    voice_client = self.voice_clients[ctx.guild.id]
-                    if not voice_client.is_playing():
-                        await self.play_next(ctx)
-                    
-                    await ctx.send(f'🎵 **Started playing:** {song_info["title"]}')
-                    
+                    if song_info:
+                        print(f"Adding song to queue: {song_info['title']}")
+                        self.add_to_queue(ctx.guild.id, song_info)
+                        
+                        # Start playing immediately
+                        voice_client = self.voice_clients.get(ctx.guild.id)
+                        if voice_client and voice_client.is_connected() and not voice_client.is_playing():
+                            print("Starting playback...")
+                            await self.play_next(ctx)
+                        elif not voice_client or not voice_client.is_connected():
+                            print("Voice client not connected, attempting to join...")
+                            if await self.join(ctx):
+                                await self.play_next(ctx)
+                        
+                        await ctx.send(f'🎵 **Started playing:** {song_info["title"]}')
+                        first_song_played = True
+                        
+                        # Remove the played song from entries list for background loading
+                        entries = entries[1:]  # Remove first song
+                    else:
+                        print("No song info returned from task")
+                            
                 except Exception as e:
-                    print(f"Error with first song: {e}")
-                    await ctx.send('❌ Error with first song, trying next...')
+                    print(f"Error processing first song: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    
+                    # Simple fallback
+                    if entries:
+                        print("Using fallback method...")
+                        entry = entries[0]
+                        video_url = entry.get('url') or f"https://www.youtube.com/watch?v={entry.get('id')}"
+                        duration_sec = int(entry.get('duration', 0) or 0)
+                        song_info = {
+                            'title': entry.get('title', 'Unknown Title'),
+                            'duration': f"{duration_sec//60}:{duration_sec%60:02d}",
+                            'duration_seconds': duration_sec,
+                            'thumbnail': entry.get('thumbnail'),
+                            'author': entry.get('uploader', entry.get('channel', 'Unknown Artist')),
+                            'webpage_url': video_url,
+                            'requested_by': ctx.author.name
+                        }
+                        self.add_to_queue(ctx.guild.id, song_info)
+                        
+                        voice_client = self.voice_clients.get(ctx.guild.id)
+                        if voice_client and voice_client.is_connected() and not voice_client.is_playing():
+                            await self.play_next(ctx)
+                        elif not voice_client or not voice_client.is_connected():
+                            if await self.join(ctx):
+                                await self.play_next(ctx)
+                        
+                        await ctx.send(f'🎵 **Started playing:** {song_info["title"]}')
+                        first_song_played = True
+                        entries = entries[1:]
+                
+                if not first_song_played:
+                    await ctx.send('❌ Could not play any songs from the playlist!')
+                    return
                 
                 # Process remaining songs in background (non-blocking)
-                if len(entries) > 1:
-                    asyncio.create_task(self.load_remaining_songs(ctx, entries[1:], info.get("title", "Unknown Playlist")))
+                if len(entries) > 0:
+                    asyncio.create_task(self.load_remaining_songs(ctx, entries, info.get("title", "Unknown Playlist")))
                 
             else:
                 await ctx.send('❌ Could not find any songs in the playlist!')
@@ -306,39 +402,72 @@ class MusicPlayer:
             await ctx.send(f'❌ Error processing playlist: {str(e)[:100]}...')
 
     async def load_remaining_songs(self, ctx, entries, playlist_title):
-        """Load remaining songs in background"""
+        """Load remaining songs in background with parallel processing"""
         added_count = 1  # First song already added
         total_songs = len(entries) + 1
         
-        await ctx.send(f'⏳ Loading remaining {len(entries)} songs in background...')
+        if len(entries) == 0:
+            return
+            
+        await ctx.send(f'⚡ Fast-loading remaining {len(entries)} songs in background...')
         
-        for i, entry in enumerate(entries):
+        async def process_song(entry, ctx_author_name):
+            """Process a single song entry (lightweight - no URL extraction)"""
             try:
+                # Only get basic info, no URL extraction to save time
                 video_url = entry.get('url') or f"https://www.youtube.com/watch?v={entry.get('id')}"
-                detailed_info = self.ytdl.extract_info(video_url, download=False)
-                song_info = self.extract_song_info(detailed_info, ctx.author.name)
-                self.add_to_queue(ctx.guild.id, song_info)
-                added_count += 1
                 
-                # Update progress every 3 songs
-                if (i + 2) % 3 == 0:  # +2 because we start from index 0 but already have 1 song
-                    await ctx.send(f'⏳ Loaded {added_count}/{total_songs} songs...')
-                
-                # Small delay to prevent overwhelming
-                await asyncio.sleep(0.5)
+                # Create song info directly from playlist entry (much faster)
+                duration_sec = int(entry.get('duration', 0) or 0)
+                song_info = {
+                    'title': entry.get('title', 'Unknown Title'),
+                    'duration': f"{duration_sec//60}:{duration_sec%60:02d}",
+                    'duration_seconds': duration_sec,
+                    'thumbnail': entry.get('thumbnail'),
+                    'author': entry.get('uploader', entry.get('channel', 'Unknown Artist')),
+                    'webpage_url': video_url,
+                    'requested_by': ctx_author_name
+                    # No URL field - extracted fresh when needed
+                }
+                return song_info
                 
             except Exception as e:
                 print(f"Skipping song due to error: {e}")
-                continue
+                return None
         
-        await ctx.send(f'✅ **Finished loading {added_count} songs from:** {playlist_title}')
+        # Process songs in batches of 5 for optimal performance
+        batch_size = 5
+        successfully_added = 0
+        
+        for i in range(0, len(entries), batch_size):
+            batch = entries[i:i + batch_size]
+            
+            # Process batch in parallel
+            tasks = [process_song(entry, ctx.author.name) for entry in batch]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            # Add successful results to queue
+            for result in results:
+                if result and not isinstance(result, Exception):
+                    self.add_to_queue(ctx.guild.id, result)
+                    successfully_added += 1
+            
+            # Update progress every batch
+            current_total = added_count + successfully_added
+            if i + batch_size < len(entries):  # Don't show progress for last batch
+                await ctx.send(f'⚡ Loaded {current_total}/{total_songs} songs...')
+            
+            # Small delay between batches to prevent overwhelming
+            await asyncio.sleep(0.1)
+        
+        final_count = added_count + successfully_added
+        await ctx.send(f'✅ **Lightning fast! Loaded {final_count} songs from:** {playlist_title}')
 
     def extract_song_info(self, entry, requested_by):
-        """Extract song information from yt-dlp entry"""
+        """Extract song information from yt-dlp entry (no URL caching)"""
         if not entry:
             return {
                 'title': 'Unknown Title',
-                'url': '',
                 'duration': 'Unknown',
                 'duration_seconds': 0,
                 'thumbnail': None,
@@ -348,23 +477,6 @@ class MusicPlayer:
             }
             
         title = entry.get('title', 'Unknown Title') if entry else 'Unknown Title'
-        
-        # Try multiple URL sources for audio
-        url = None
-        if entry:
-            # Try direct URL first
-            url = entry.get('url')
-            # If no direct URL, look for formats
-            if not url and 'formats' in entry:
-                # Find best audio format
-                for fmt in entry['formats']:
-                    if fmt.get('acodec') != 'none' and fmt.get('url'):
-                        url = fmt['url']
-                        break
-            # Fallback to webpage URL for re-extraction
-            if not url:
-                url = entry.get('webpage_url', '')
-        
         duration = entry.get('duration', 0) if entry else 0
         thumbnail = entry.get('thumbnail') if entry else None
         author = entry.get('uploader', entry.get('channel', 'Unknown Artist')) if entry else 'Unknown Artist'
@@ -375,13 +487,13 @@ class MusicPlayer:
         
         return {
             'title': title,
-            'url': url,
             'duration': duration_str,
             'duration_seconds': duration,
             'thumbnail': thumbnail,
             'author': author,
             'webpage_url': webpage_url,
             'requested_by': requested_by
+            # NOTE: No 'url' field - we extract URLs fresh each time to avoid 403 errors
         }
 
     def add_to_queue(self, guild_id, song_info):
@@ -405,32 +517,55 @@ class MusicPlayer:
             return
 
         voice_client = self.voice_clients.get(guild_id)
-        if not voice_client:
+        if not voice_client or not voice_client.is_connected():
+            await ctx.send('❌ Not connected to voice channel! Use `!join` to connect.')
             return
 
         # Get the song but don't remove it yet
         song_info = self.queues[guild_id][0]
         
         try:
-            # Validate we have a playable URL - if not, try to get it from webpage_url
-            audio_url = song_info.get('url')
-            if not audio_url and song_info.get('webpage_url'):
-                # Try to re-extract audio URL from webpage URL
-                try:
-                    loop = asyncio.get_event_loop()
-                    fresh_info = await loop.run_in_executor(
-                        None, 
-                        lambda: self.ytdl.extract_info(song_info['webpage_url'], download=False)
-                    )
-                    if fresh_info:
-                        audio_url = fresh_info.get('url')
-                        # Update song info with fresh URL
-                        song_info['url'] = audio_url
-                except Exception as e:
-                    print(f"Failed to re-extract URL: {e}")
+            # Always extract fresh URL just before playing (no caching)
+            webpage_url = song_info.get('webpage_url')
             
-            if not audio_url:
-                await ctx.send('❌ No audio stream available for this song!')
+            if not webpage_url:
+                await ctx.send('❌ No webpage URL available for this song!')
+                # Remove the bad song and try next
+                self.queues[guild_id].pop(0)
+                await self.play_next(ctx)
+                return
+            
+            # Extract fresh URL every time to avoid 403 errors
+            print(f"Extracting fresh URL for: {song_info['title']}")
+            try:
+                loop = asyncio.get_event_loop()
+                fresh_info = await asyncio.wait_for(
+                    loop.run_in_executor(None, lambda: self.ytdl.extract_info(webpage_url, download=False)),
+                    timeout=20.0
+                )
+                
+                if not fresh_info:
+                    raise Exception("No info extracted")
+                
+                # Get the best audio URL
+                audio_url = fresh_info.get('url')
+                if not audio_url and 'formats' in fresh_info:
+                    # Find best audio format
+                    for fmt in fresh_info['formats']:
+                        if fmt.get('acodec') != 'none' and fmt.get('url'):
+                            audio_url = fmt['url']
+                            break
+                
+                if not audio_url:
+                    raise Exception("No audio URL found")
+                    
+                print(f"✅ Fresh URL extracted successfully for: {song_info['title']}")
+                
+            except Exception as e:
+                print(f"❌ Failed to extract fresh URL: {e}")
+                await ctx.send(f'❌ Cannot get audio for "{song_info["title"]}", skipping...')
+                # Remove the bad song and try next
+                self.queues[guild_id].pop(0)
                 await self.play_next(ctx)
                 return
             
@@ -447,7 +582,7 @@ class MusicPlayer:
             self.start_times[guild_id] = time.time()
             
             voice_client.play(source, after=lambda e: asyncio.run_coroutine_threadsafe(
-                self.song_finished(ctx), self.bot.loop
+                self.song_finished(ctx, e), self.bot.loop
             ))
 
             # Create and send enhanced music interface
@@ -484,8 +619,17 @@ class MusicPlayer:
             else:
                 await ctx.send(f'❌ Error playing "{song_info.get("title", "Unknown")}"!')
 
-    async def song_finished(self, ctx):
+    async def song_finished(self, ctx, error=None):
         """Handle when a song finishes"""
+        if error:
+            print(f"Playback error: {error}")
+            # If there was an error, try the next song
+            guild_id = ctx.guild.id
+            if guild_id in self.queues and self.queues[guild_id]:
+                await ctx.send(f'⚠️ Playback error, trying next song...')
+            await self.play_next(ctx)
+            return
+            
         await asyncio.sleep(1)  # Small delay
         
         guild_id = ctx.guild.id
