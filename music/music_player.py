@@ -18,10 +18,11 @@ class MusicPlayer:
         self.shuffle_modes = {}
         self.volumes = {}
         self.url_cache = {}
+        self.temp_song_info = {}  # Store temp song info while fetching details
         
-        # LATEST yt-dlp 2025.10.14 optimized options
-        self.ytdl_format_options = {
-            'format': 'ba/b',
+        # FAST yt-dlp options for instant playback
+        self.ytdl_fast_options = {
+            'format': 'bestaudio/best',
             'outtmpl': '%(id)s.%(ext)s',
             'restrictfilenames': False,
             'noplaylist': True,
@@ -34,46 +35,19 @@ class MusicPlayer:
             'source_address': '0.0.0.0',
             'force_ipv4': True,
             'extract_flat': False,
-            'retries': 3,
-            'fragment_retries': 3,
-            'file_access_retries': 0,
-            'skip_unavailable_fragments': True,
-            'extractor_retries': 1,
-            'socket_timeout': 10,
-            'extractor_args': {
-                'youtube': {
-                    'player_client': ['android_embedded', 'web'],  # New optimized clients
-                    'player_skip': ['configs', 'webpage', 'js'],
-                    'formats': 'bestaudio/best'
-                }
-            },
-            'postprocessor_args': {
-                'audio': {
-                    'preferredcodec': 'best',
-                    'preferredquality': '0'
-                }
-            },
-            'http_headers': {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                'Accept': '*/*',
-                'Accept-Language': 'en-US,en;q=0.5',
-                'Sec-Fetch-Mode': 'navigate',
-            },
-            # New 2025.10.14 features
-            'concurrent_fragment_downloads': 1,
-            'throttled_rate': 'inf',
-            'overwrites': True,
-            'no_overwrites': False,
-            'continue_dl': False,
-            'paths': {'home': './temp/'},
+            'retries': 2,
+            'fragment_retries': 2,
+            'socket_timeout': 8,
+            'http_chunk_size': 1048576,
+            'cookiefile': None,
         }
         
         self.ffmpeg_options = {
-            'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 -http_persistent 1',
-            'options': '-vn -b:a 128k -bufsize 512k'
+            'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
+            'options': '-vn'
         }
         
-        self.ytdl = yt_dlp.YoutubeDL(self.ytdl_format_options)
+        self.ytdl_fast = yt_dlp.YoutubeDL(self.ytdl_fast_options)
 
     async def join(self, ctx):
         """Join voice channel"""
@@ -111,38 +85,111 @@ class MusicPlayer:
                 del self.music_messages[ctx.guild.id]
             if ctx.guild.id in self.volumes:
                 del self.volumes[ctx.guild.id]
+            if ctx.guild.id in self.temp_song_info:
+                del self.temp_song_info[ctx.guild.id]
                 
             await ctx.send('👋 Left voice channel!')
         else:
             await ctx.send('❌ Not connected to a voice channel!')
 
-    async def extract_info_fast(self, query):
-        """Fast info extraction using latest yt-dlp features"""
+    async def get_audio_url_instant(self, query):
+        """Get audio URL instantly for immediate playback"""
         try:
-            # Use the new concurrent features in 2025.10.14
-            loop = asyncio.get_event_loop()
+            # Check cache first
+            if query in self.url_cache:
+                cached_data = self.url_cache[query]
+                if (datetime.now() - cached_data['timestamp']) < timedelta(minutes=30):
+                    return cached_data['url'], cached_data['basic_info']
             
-            # For search queries, use ytsearch1 for speed
+            # For search queries, use ytsearch1
             if not any(domain in query.lower() for domain in ['youtube.com', 'youtu.be', 'http', 'www.']):
                 query = f"ytsearch1:{query}"
             
-            # Use the new timeout and retry features
+            loop = asyncio.get_event_loop()
             info = await asyncio.wait_for(
-                loop.run_in_executor(None, lambda: self.ytdl.extract_info(query, download=False)),
-                timeout=12.0
+                loop.run_in_executor(None, lambda: self.ytdl_fast.extract_info(query, download=False)),
+                timeout=10.0
             )
             
-            return info
+            if not info:
+                return None, None
+            
+            # Get the entry
+            if 'entries' in info:
+                if not info['entries']:
+                    return None, None
+                entry = info['entries'][0]
+            else:
+                entry = info
+            
+            # Get the audio URL
+            url = entry.get('url')
+            if not url and 'formats' in entry:
+                for fmt in entry['formats']:
+                    if fmt.get('acodec') != 'none' and fmt.get('url'):
+                        url = fmt['url']
+                        break
+            
+            if not url:
+                return None, None
+            
+            # Create basic info for immediate use
+            basic_info = {
+                'title': entry.get('title', 'Loading...'),
+                'duration': 'Loading...',
+                'duration_seconds': 0,
+                'thumbnail': None,
+                'author': 'Loading...',
+                'webpage_url': entry.get('webpage_url', query),
+                'url': url
+            }
+            
+            # Cache the result
+            self.url_cache[query] = {
+                'url': url,
+                'basic_info': basic_info,
+                'timestamp': datetime.now()
+            }
+            
+            return url, basic_info
             
         except asyncio.TimeoutError:
-            print(f"Timeout extracting: {query}")
-            return None
+            print(f"Timeout getting URL for: {query}")
+            return None, None
         except Exception as e:
-            print(f"Extraction error: {e}")
-            return None
+            print(f"Error getting audio URL: {e}")
+            return None, None
+
+    async def get_detailed_song_info(self, webpage_url, basic_info):
+        """Get detailed song info in background"""
+        try:
+            loop = asyncio.get_event_loop()
+            detailed_info = await loop.run_in_executor(
+                None, lambda: self.ytdl_fast.extract_info(webpage_url, download=False)
+            )
+            
+            if detailed_info:
+                duration_sec = detailed_info.get('duration', 0)
+                duration_str = f"{duration_sec//60}:{duration_sec%60:02d}" if duration_sec else "Unknown"
+                
+                detailed_info = {
+                    'title': detailed_info.get('title', basic_info['title']),
+                    'duration': duration_str,
+                    'duration_seconds': duration_sec,
+                    'thumbnail': detailed_info.get('thumbnail'),
+                    'author': detailed_info.get('uploader', detailed_info.get('channel', 'Unknown Artist')),
+                    'webpage_url': webpage_url,
+                    'url': basic_info['url']
+                }
+                return detailed_info
+            
+        except Exception as e:
+            print(f"Error getting detailed info: {e}")
+        
+        return basic_info  # Return basic info if detailed fetch fails
 
     async def play(self, ctx, query):
-        """Fast play music using latest yt-dlp"""
+        """INSTANT play - play music immediately, fetch details later"""
         # Ensure user is in voice channel
         if not ctx.author.voice:
             await ctx.send('❌ You need to be in a voice channel!')
@@ -155,80 +202,38 @@ class MusicPlayer:
         voice_client = self.voice_clients[ctx.guild.id]
         
         # Send immediate feedback
-        search_msg = await ctx.send('🔍 **Searching...**')
+        search_msg = await ctx.send('⚡ **Getting song...**')
         
         try:
-            # Get YouTube info with latest yt-dlp
-            info = await self.extract_info_fast(query)
+            # Get audio URL INSTANTLY for immediate playback
+            audio_url, basic_song_info = await self.get_audio_url_instant(query)
             
-            if not info:
-                await search_msg.edit(content='❌ **Could not find the song!**')
+            if not audio_url or not basic_song_info:
+                await search_msg.edit(content='❌ **Could not find playable audio!**')
                 return
             
-            # Extract song info from result
-            if 'entries' in info:
-                if not info['entries']:
-                    await search_msg.edit(content='❌ **No songs found!**')
-                    return
-                entry = info['entries'][0]
-            else:
-                entry = info
+            # Add requester info
+            basic_song_info['requested_by'] = ctx.author.name
             
-            # Get the audio URL - using latest yt-dlp format selection
-            url = entry.get('url')
-            if not url:
-                # Fallback to format selection
-                if 'formats' in entry:
-                    # Use the new format selection logic
-                    audio_formats = [f for f in entry['formats'] if f.get('acodec') != 'none']
-                    if audio_formats:
-                        # Prefer formats that don't require additional processing
-                        best_audio = None
-                        for fmt in audio_formats:
-                            if fmt.get('protocol') in ['https', 'http'] and not fmt.get('is_from_start'):
-                                best_audio = fmt
-                                break
-                        if best_audio:
-                            url = best_audio['url']
-                
-                if not url:
-                    await search_msg.edit(content='❌ **Could not get audio URL!**')
-                    return
-            
-            # Create song info with proper duration formatting
-            duration_sec = entry.get('duration', 0)
-            if duration_sec and duration_sec > 0:
-                duration_str = f"{duration_sec//60}:{duration_sec%60:02d}"
-            else:
-                duration_str = "Live"
-            
-            song_info = {
-                'title': entry.get('title', 'Unknown Title'),
-                'duration': duration_str,
-                'duration_seconds': duration_sec,
-                'thumbnail': entry.get('thumbnail'),
-                'author': entry.get('uploader', entry.get('channel', 'Unknown Artist')),
-                'webpage_url': entry.get('webpage_url', query),
-                'url': url,
-                'requested_by': ctx.author.name
-            }
+            # Store temporary info
+            guild_id = ctx.guild.id
+            self.temp_song_info[guild_id] = basic_song_info
             
             # Add to queue
-            self.add_to_queue(ctx.guild.id, song_info)
+            self.add_to_queue(guild_id, basic_song_info)
             
-            # Start playing immediately if nothing is playing
             if not voice_client.is_playing():
                 await search_msg.delete()
-                await self.play_next(ctx)
+                await self.play_next_instant(ctx, basic_song_info)
             else:
-                await search_msg.edit(content=f'✅ **Added to queue:** {song_info["title"]}')
+                await search_msg.edit(content=f'✅ **Added to queue:** {basic_song_info["title"]}')
                 
         except Exception as e:
             print(f"Play error: {e}")
             await search_msg.edit(content=f'❌ **Error:** {str(e)[:100]}')
 
-    async def play_next(self, ctx):
-        """Play next song with music interface"""
+    async def play_next_instant(self, ctx, song_info):
+        """INSTANT playback - play immediately with basic info, fetch details in background"""
         guild_id = ctx.guild.id
         
         if guild_id not in self.queues or not self.queues[guild_id]:
@@ -254,18 +259,18 @@ class MusicPlayer:
                 return
 
         # Get next song
-        song_info = self.queues[guild_id][0]
+        current_song_info = self.queues[guild_id][0]
         
         try:
-            # Use the extracted URL for playback
+            # Use the extracted URL for IMMEDIATE playback
             source = PCMVolumeTransformer(
-                FFmpegPCMAudio(song_info['url'], **self.ffmpeg_options),
+                FFmpegPCMAudio(current_song_info['url'], **self.ffmpeg_options),
                 volume=self.get_volume(guild_id)
             )
             
             # Remove from queue and set as current
             self.queues[guild_id].pop(0)
-            self.current_songs[guild_id] = song_info
+            self.current_songs[guild_id] = current_song_info
             self.start_times[guild_id] = time.time()
             
             def after_play(error):
@@ -275,26 +280,80 @@ class MusicPlayer:
                     self.song_finished(ctx, error), self.bot.loop
                 )
             
-            # Start playback
+            # START PLAYBACK IMMEDIATELY
             voice_client.play(source, after=after_play)
 
-            # Create and send music interface AFTER playback starts
-            await self.create_music_interface(ctx, song_info)
+            # Show basic music interface immediately
+            await self.create_basic_music_interface(ctx, current_song_info)
+            
+            # Fetch detailed info in background and update interface
+            asyncio.create_task(self.update_with_detailed_info(ctx, current_song_info))
             
         except Exception as e:
             print(f"Playback error: {e}")
-            # Try next song if available
             if guild_id in self.queues and self.queues[guild_id]:
                 await ctx.send(f'❌ Error playing song, trying next...')
-                await self.play_next(ctx)
+                await self.play_next_instant(ctx, song_info)
 
-    async def create_music_interface(self, ctx, song_info):
-        """Create and send the music interface"""
+    async def update_with_detailed_info(self, ctx, basic_song_info):
+        """Update music interface with detailed info in background"""
+        try:
+            # Get detailed song info
+            detailed_info = await self.get_detailed_song_info(
+                basic_song_info['webpage_url'], 
+                basic_song_info
+            )
+            
+            # Update the current song with detailed info
+            guild_id = ctx.guild.id
+            if guild_id in self.current_songs:
+                # Merge detailed info with current song
+                self.current_songs[guild_id].update(detailed_info)
+                
+                # Update the music interface with detailed info
+                await self.create_music_interface(ctx, self.current_songs[guild_id])
+                
+        except Exception as e:
+            print(f"Error updating detailed info: {e}")
+
+    async def create_basic_music_interface(self, ctx, song_info):
+        """Create basic music interface with available info"""
         guild_id = ctx.guild.id
         
         embed = discord.Embed(color=0x1DB954)
         
-        # Build description with all info
+        # Build basic description
+        description = f"**{song_info['title']}**\n"
+        description += f"by {song_info['author']}\n\n"
+        description += f"⏱️ {song_info['duration']}"
+        
+        # Add queue info
+        queue_count = len(self.queues.get(guild_id, []))
+        if queue_count > 0:
+            description += f" • {queue_count} in queue"
+        
+        embed.description = description
+        embed.set_footer(text=f"Requested by {song_info['requested_by']} • Loading details...")
+        
+        # Create basic buttons view
+        view = MusicControlView(self, ctx.guild.id)
+        
+        # Send or update music message
+        if guild_id in self.music_messages:
+            try:
+                await self.music_messages[guild_id].edit(embed=embed, view=view)
+            except:
+                self.music_messages[guild_id] = await ctx.send(embed=embed, view=view)
+        else:
+            self.music_messages[guild_id] = await ctx.send(embed=embed, view=view)
+
+    async def create_music_interface(self, ctx, song_info):
+        """Create full music interface with complete info"""
+        guild_id = ctx.guild.id
+        
+        embed = discord.Embed(color=0x1DB954)
+        
+        # Build complete description
         description = f"**{song_info['title']}**\n"
         description += f"by {song_info['author']}\n\n"
         
@@ -332,35 +391,26 @@ class MusicPlayer:
         # Create buttons view
         view = MusicControlView(self, ctx.guild.id)
         
-        # Send or update music message
+        # Update music message
         if guild_id in self.music_messages:
             try:
                 await self.music_messages[guild_id].edit(embed=embed, view=view)
             except:
+                # If message was deleted, send new one
                 self.music_messages[guild_id] = await ctx.send(embed=embed, view=view)
-        else:
-            self.music_messages[guild_id] = await ctx.send(embed=embed, view=view)
 
-    def get_progress_bar(self, guild_id, song_info):
-        """Create a progress bar for the currently playing song"""
-        if guild_id not in self.start_times or not song_info.get('duration_seconds'):
-            return "⚪⚪⚪⚪⚪⚪⚪⚪⚪⚪ 0:00"
+    async def play_next(self, ctx):
+        """Regular play next (for song_finished callback)"""
+        guild_id = ctx.guild.id
         
-        elapsed = time.time() - self.start_times[guild_id]
-        total_seconds = song_info['duration_seconds']
-        
-        if elapsed > total_seconds:
-            elapsed = total_seconds
-        
-        progress = elapsed / total_seconds if total_seconds > 0 else 0
-        filled_blocks = int(progress * 10)
-        
-        bar = "🔵" * filled_blocks + "⚪" * (10 - filled_blocks)
-        
-        current_minutes = int(elapsed // 60)
-        current_seconds = int(elapsed % 60)
-        
-        return f"{bar} {current_minutes}:{current_seconds:02d}"
+        if guild_id not in self.queues or not self.queues[guild_id]:
+            if guild_id in self.current_songs:
+                del self.current_songs[guild_id]
+            return
+
+        # Get next song info
+        next_song = self.queues[guild_id][0]
+        await self.play_next_instant(ctx, next_song)
 
     async def song_finished(self, ctx, error=None):
         """Handle when a song finishes"""
@@ -389,6 +439,27 @@ class MusicPlayer:
             self.queues[guild_id].append(current_song.copy())
         
         await self.play_next(ctx)
+
+    def get_progress_bar(self, guild_id, song_info):
+        """Create a progress bar for the currently playing song"""
+        if guild_id not in self.start_times or not song_info.get('duration_seconds'):
+            return "⚪⚪⚪⚪⚪⚪⚪⚪⚪⚪ 0:00"
+        
+        elapsed = time.time() - self.start_times[guild_id]
+        total_seconds = song_info['duration_seconds']
+        
+        if elapsed > total_seconds:
+            elapsed = total_seconds
+        
+        progress = elapsed / total_seconds if total_seconds > 0 else 0
+        filled_blocks = int(progress * 10)
+        
+        bar = "🔵" * filled_blocks + "⚪" * (10 - filled_blocks)
+        
+        current_minutes = int(elapsed // 60)
+        current_seconds = int(elapsed % 60)
+        
+        return f"{bar} {current_minutes}:{current_seconds:02d}"
 
     def add_to_queue(self, guild_id, song_info):
         """Add song to guild queue"""
@@ -422,6 +493,8 @@ class MusicPlayer:
             self.queues[guild_id].clear()
         if guild_id in self.current_songs:
             del self.current_songs[guild_id]
+        if guild_id in self.temp_song_info:
+            del self.temp_song_info[guild_id]
             
         await ctx.send('⏹️ Music stopped and queue cleared!')
 
@@ -615,6 +688,8 @@ class MusicControlView(discord.ui.View):
                 del self.music_player.music_messages[self.guild_id]
             if self.guild_id in self.music_player.volumes:
                 del self.music_player.volumes[self.guild_id]
+            if self.guild_id in self.music_player.temp_song_info:
+                del self.music_player.temp_song_info[self.guild_id]
                 
             await interaction.response.send_message("👋 Left voice channel!", ephemeral=True)
         else:
