@@ -3,6 +3,7 @@ import asyncio
 import yt_dlp
 import time
 import random
+from datetime import datetime, timedelta
 from discord import FFmpegPCMAudio, FFmpegOpusAudio, PCMVolumeTransformer
 
 class MusicPlayer:
@@ -16,6 +17,7 @@ class MusicPlayer:
         self.repeat_modes = {}  # Track repeat mode for each guild: 0=off, 1=track, 2=queue
         self.shuffle_modes = {}  # Track shuffle mode for each guild: True/False
         self.volumes = {}  # Track volume for each guild (0.0-1.0)
+        self.url_cache = {}  # Cache extracted URLs with timestamp
         
         # yt-dlp options optimized for reliability
         self.ytdl_format_options = {
@@ -31,9 +33,9 @@ class MusicPlayer:
             'default_search': 'ytsearch',
             'source_address': '0.0.0.0',
             'extract_flat': False,
-            'retries': 3,
-            'fragment_retries': 3,
-            'socket_timeout': 15,
+            'retries': 2,
+            'fragment_retries': 2,
+            'socket_timeout': 8,
             'http_chunk_size': 10485760,
             'cookiefile': None,
             'age_limit': None,
@@ -109,6 +111,30 @@ class MusicPlayer:
         else:
             await ctx.send('❌ Not connected to a voice channel!')
 
+    def is_cache_valid(self, webpage_url):
+        """Check if cached URL is still valid (not older than 30 minutes)"""
+        if webpage_url not in self.url_cache:
+            return False
+        
+        cached_time = self.url_cache[webpage_url].get('timestamp')
+        if not cached_time:
+            return False
+        
+        return (datetime.now() - cached_time) < timedelta(minutes=30)
+    
+    def get_cached_url(self, webpage_url):
+        """Get cached audio URL if valid"""
+        if self.is_cache_valid(webpage_url):
+            return self.url_cache[webpage_url].get('audio_url')
+        return None
+    
+    def cache_url(self, webpage_url, audio_url):
+        """Cache audio URL with timestamp"""
+        self.url_cache[webpage_url] = {
+            'audio_url': audio_url,
+            'timestamp': datetime.now()
+        }
+    
     async def get_youtube_url(self, search, preserve_playlist=False):
         """Extract YouTube URL from search query"""
         try:
@@ -197,7 +223,7 @@ class MusicPlayer:
                 print(f"Attempting to extract info from URL: {url}")
                 info = await asyncio.wait_for(
                     loop.run_in_executor(None, lambda: self.ytdl.extract_info(url, download=False)),
-                    timeout=60.0
+                    timeout=20.0
                 )
                 print(f"Extraction successful. Info type: {type(info)}")
                 if info:
@@ -537,39 +563,48 @@ class MusicPlayer:
                 await self.play_next(ctx)
                 return
             
-            # Extract fresh URL every time to avoid 403 errors
-            print(f"Extracting fresh URL for: {song_info['title']}")
-            try:
-                loop = asyncio.get_event_loop()
-                fresh_info = await asyncio.wait_for(
-                    loop.run_in_executor(None, lambda: self.ytdl.extract_info(webpage_url, download=False)),
-                    timeout=20.0
-                )
-                
-                if not fresh_info:
-                    raise Exception("No info extracted")
-                
-                # Get the best audio URL
-                audio_url = fresh_info.get('url')
-                if not audio_url and 'formats' in fresh_info:
-                    # Find best audio format
-                    for fmt in fresh_info['formats']:
-                        if fmt.get('acodec') != 'none' and fmt.get('url'):
-                            audio_url = fmt['url']
-                            break
-                
-                if not audio_url:
-                    raise Exception("No audio URL found")
+            # Check cache first for performance
+            cached_audio_url = self.get_cached_url(webpage_url)
+            
+            if cached_audio_url:
+                print(f"🚀 Using cached URL for: {song_info['title']}")
+                audio_url = cached_audio_url
+            else:
+                # Extract fresh URL with faster timeout
+                print(f"Extracting fresh URL for: {song_info['title']}")
+                try:
+                    loop = asyncio.get_event_loop()
+                    fresh_info = await asyncio.wait_for(
+                        loop.run_in_executor(None, lambda: self.ytdl.extract_info(webpage_url, download=False)),
+                        timeout=15.0
+                    )
                     
-                print(f"✅ Fresh URL extracted successfully for: {song_info['title']}")
-                
-            except Exception as e:
-                print(f"❌ Failed to extract fresh URL: {e}")
-                await ctx.send(f'❌ Cannot get audio for "{song_info["title"]}", skipping...')
-                # Remove the bad song and try next
-                self.queues[guild_id].pop(0)
-                await self.play_next(ctx)
-                return
+                    if not fresh_info:
+                        raise Exception("No info extracted")
+                    
+                    # Get the best audio URL
+                    audio_url = fresh_info.get('url')
+                    if not audio_url and 'formats' in fresh_info:
+                        # Find best audio format
+                        for fmt in fresh_info['formats']:
+                            if fmt.get('acodec') != 'none' and fmt.get('url'):
+                                audio_url = fmt['url']
+                                break
+                    
+                    if not audio_url:
+                        raise Exception("No audio URL found")
+                    
+                    # Cache the URL for future use
+                    self.cache_url(webpage_url, audio_url)
+                    print(f"✅ Fresh URL extracted successfully for: {song_info['title']}")
+                    
+                except Exception as e:
+                    print(f"❌ Failed to extract fresh URL: {e}")
+                    await ctx.send(f'❌ Cannot get audio for "{song_info["title"]}", skipping...')
+                    # Remove the bad song and try next
+                    self.queues[guild_id].pop(0)
+                    await self.play_next(ctx)
+                    return
             
             # Create audio source with volume control
             base_source = FFmpegPCMAudio(audio_url, **self.ffmpeg_options)

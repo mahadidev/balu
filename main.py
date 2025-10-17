@@ -1,4 +1,5 @@
 import os
+import asyncio
 import discord
 from discord.ext import commands
 from music.music_player import MusicPlayer
@@ -53,11 +54,56 @@ async def on_ready():
     
     print(f'✅ {bot.user.name} is online!')
 
+@bot.event
+async def on_disconnect():
+    print('⚠️ Bot disconnected from Discord')
 
-# Run the bot
-if __name__ == '__main__':
+@bot.event
+async def on_resumed():
+    print('✅ Bot reconnected to Discord')
+
+@bot.event
+async def on_error(event, *args, **kwargs):
+    print(f'❌ Error in event {event}: {args}')
+    import traceback
+    traceback.print_exc()
+
+
+# Run the bot with retry logic
+async def run_bot_with_retry():
+    """Run bot with automatic reconnection on failure"""
     token = os.getenv('DISCORD_TOKEN')
     if not token:
         print('❌ No DISCORD_TOKEN found in .env file!')
-    else:
-        bot.run(token)
+        return
+    
+    retry_count = 0
+    max_retries = 5
+    
+    while retry_count < max_retries:
+        try:
+            print(f'🚀 Starting bot (attempt {retry_count + 1}/{max_retries})')
+            await bot.start(token)
+        except discord.ConnectionClosed as e:
+            retry_count += 1
+            print(f'⚠️ Connection closed (code {e.code}), retrying in {retry_count * 5} seconds...')
+            if retry_count < max_retries:
+                await asyncio.sleep(retry_count * 5)
+            else:
+                print('❌ Max retries reached, exiting...')
+                break
+        except Exception as e:
+            retry_count += 1
+            print(f'❌ Unexpected error: {e}')
+            if retry_count < max_retries:
+                print(f'Retrying in {retry_count * 5} seconds...')
+                await asyncio.sleep(retry_count * 5)
+            else:
+                print('❌ Max retries reached, exiting...')
+                break
+
+if __name__ == '__main__':
+    try:
+        asyncio.run(run_bot_with_retry())
+    except KeyboardInterrupt:
+        print('👋 Bot stopped by user')
