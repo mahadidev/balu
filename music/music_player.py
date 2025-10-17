@@ -19,46 +19,34 @@ class MusicPlayer:
         self.volumes = {}
         self.url_cache = {}
         
-        # ULTRA FAST yt-dlp options
-        self.ytdl_fast_options = {
+        # RELIABLE yt-dlp options that actually work
+        self.ytdl_format_options = {
             'format': 'bestaudio/best',
+            'outtmpl': '%(extractor)s-%(id)s-%(title)s.%(ext)s',
+            'restrictfilenames': True,
+            'noplaylist': True,
+            'nocheckcertificate': True,
+            'ignoreerrors': False,
+            'logtostderr': False,
             'quiet': True,
             'no_warnings': True,
-            'noplaylist': True,
-            'extract_flat': False,
-            'socket_timeout': 5,
-            'retries': 1,
-            'fragment_retries': 1,
-            'extractor_retries': 1,
-            'ignoreerrors': False,
-            'no_check_certificate': True,
-            'prefer_insecure': True,
-            'nocheckcertificate': True,
+            'default_search': 'ytsearch',
             'source_address': '0.0.0.0',
-            'forceipv4': True,
-            'cachedir': False,
-            'no_cache_dir': True,
-            'rm_cache_dir': True,
-            'extractor_args': {
-                'youtube': {
-                    'player_client': ['android'],  # Fastest client
-                    'player_skip': ['configs', 'webpage', 'js']
-                }
-            },
-            'postprocessor_args': {
-                'audio': {
-                    'preferredcodec': 'best',
-                    'preferredquality': '0'
-                }
-            }
+            'extract_flat': False,
+            'retries': 3,
+            'fragment_retries': 3,
+            'socket_timeout': 10,
+            'http_chunk_size': 10485760,
+            'cookiefile': None,
+            'age_limit': None,
         }
         
         self.ffmpeg_options = {
-            'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 2 -http_persistent 1',
-            'options': '-vn -bufsize 512k'
+            'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
+            'options': '-vn'
         }
         
-        self.ytdl_fast = yt_dlp.YoutubeDL(self.ytdl_fast_options)
+        self.ytdl = yt_dlp.YoutubeDL(self.ytdl_format_options)
 
     async def join(self, ctx):
         """Join voice channel"""
@@ -101,76 +89,21 @@ class MusicPlayer:
         else:
             await ctx.send('❌ Not connected to a voice channel!')
 
-    async def get_audio_url_fast(self, query):
-        """ULTRA FAST audio URL extraction"""
+    async def get_youtube_info(self, query):
+        """Get YouTube info reliably"""
         try:
-            # Check cache first
-            if query in self.url_cache:
-                cached_data = self.url_cache[query]
-                if (datetime.now() - cached_data['timestamp']) < timedelta(minutes=30):
-                    return cached_data['url'], cached_data['info']
-            
-            # Use fast extractor with timeout
             loop = asyncio.get_event_loop()
-            
-            # First, try to get basic info quickly
-            fast_info = await asyncio.wait_for(
-                loop.run_in_executor(None, lambda: self.ytdl_fast.extract_info(query, download=False)),
-                timeout=8.0
+            info = await loop.run_in_executor(
+                None, 
+                lambda: self.ytdl.extract_info(query, download=False)
             )
-            
-            if not fast_info:
-                return None, None
-            
-            # Get the actual entry
-            if 'entries' in fast_info:
-                entry = fast_info['entries'][0]
-            else:
-                entry = fast_info
-            
-            # Extract audio URL directly from formats
-            audio_url = None
-            if 'url' in entry:
-                audio_url = entry['url']
-            elif 'formats' in entry:
-                # Find the best audio format quickly
-                for fmt in entry['formats']:
-                    if fmt.get('acodec') != 'none' and fmt.get('url'):
-                        audio_url = fmt['url']
-                        break
-            
-            if not audio_url:
-                return None, None
-            
-            # Create basic song info
-            song_info = {
-                'title': entry.get('title', 'Unknown Title'),
-                'duration': str(entry.get('duration', 0)),
-                'duration_seconds': entry.get('duration', 0),
-                'thumbnail': entry.get('thumbnail'),
-                'author': entry.get('uploader', 'Unknown Artist'),
-                'webpage_url': entry.get('webpage_url', query),
-                'url': audio_url
-            }
-            
-            # Cache the result
-            self.url_cache[query] = {
-                'url': audio_url,
-                'info': song_info,
-                'timestamp': datetime.now()
-            }
-            
-            return audio_url, song_info
-            
-        except asyncio.TimeoutError:
-            print(f"Timeout extracting URL for: {query}")
-            return None, None
+            return info
         except Exception as e:
-            print(f"Fast URL extraction error: {e}")
-            return None, None
+            print(f"Error extracting info: {e}")
+            return None
 
     async def play(self, ctx, query):
-        """ULTRA FAST play music"""
+        """Play music reliably"""
         # Ensure user is in voice channel
         if not ctx.author.voice:
             await ctx.send('❌ You need to be in a voice channel!')
@@ -183,18 +116,50 @@ class MusicPlayer:
         voice_client = self.voice_clients[ctx.guild.id]
         
         # Send immediate feedback
-        search_msg = await ctx.send('🔍 **Getting song...**')
+        search_msg = await ctx.send('🔍 **Searching for song...**')
         
         try:
-            # Get audio URL and info in ONE fast operation
-            audio_url, song_info = await self.get_audio_url_fast(query)
+            # Get YouTube info
+            info = await self.get_youtube_info(query)
             
-            if not audio_url or not song_info:
-                await search_msg.edit(content='❌ **Could not find playable audio!**')
+            if not info:
+                await search_msg.edit(content='❌ **Could not find the song!**')
                 return
             
-            # Add requester info
-            song_info['requested_by'] = ctx.author.name
+            # Extract song info
+            if 'entries' in info:
+                # This is a playlist or search result
+                if not info['entries']:
+                    await search_msg.edit(content='❌ **No songs found!**')
+                    return
+                entry = info['entries'][0]
+            else:
+                # This is a single video
+                entry = info
+            
+            # Extract the playable URL
+            url = entry.get('url')
+            if not url:
+                await search_msg.edit(content='❌ **Could not get audio URL!**')
+                return
+            
+            # Create song info
+            song_info = {
+                'title': entry.get('title', 'Unknown Title'),
+                'duration': str(entry.get('duration', 0)),
+                'duration_seconds': entry.get('duration', 0),
+                'thumbnail': entry.get('thumbnail'),
+                'author': entry.get('uploader', 'Unknown Artist'),
+                'webpage_url': entry.get('webpage_url', query),
+                'url': url,
+                'requested_by': ctx.author.name
+            }
+            
+            # Format duration properly
+            if song_info['duration_seconds'] and song_info['duration_seconds'] > 0:
+                mins = song_info['duration_seconds'] // 60
+                secs = song_info['duration_seconds'] % 60
+                song_info['duration'] = f"{mins}:{secs:02d}"
             
             # Add to queue
             self.add_to_queue(ctx.guild.id, song_info)
@@ -207,7 +172,8 @@ class MusicPlayer:
                 await search_msg.edit(content=f'✅ **Added to queue:** {song_info["title"]}')
                 
         except Exception as e:
-            await search_msg.edit(content=f'❌ **Error:** {str(e)[:50]}')
+            print(f"Play error: {e}")
+            await search_msg.edit(content=f'❌ **Error:** {str(e)[:100]}')
 
     async def play_next(self, ctx):
         """Play next song with music interface"""
@@ -239,7 +205,7 @@ class MusicPlayer:
         song_info = self.queues[guild_id][0]
         
         try:
-            # Use pre-extracted URL for immediate playback
+            # Use the extracted URL for playback
             source = PCMVolumeTransformer(
                 FFmpegPCMAudio(song_info['url'], **self.ffmpeg_options),
                 volume=self.get_volume(guild_id)
@@ -267,6 +233,7 @@ class MusicPlayer:
             print(f"Playback error: {e}")
             # Try next song if available
             if guild_id in self.queues and self.queues[guild_id]:
+                await ctx.send(f'❌ Error playing song, trying next...')
                 await self.play_next(ctx)
 
     async def create_music_interface(self, ctx, song_info):
@@ -279,15 +246,8 @@ class MusicPlayer:
         description = f"**{song_info['title']}**\n"
         description += f"by {song_info['author']}\n\n"
         
-        # Format duration
-        duration_sec = song_info.get('duration_seconds', 0)
-        if duration_sec and duration_sec > 0:
-            duration_str = f"{duration_sec//60}:{duration_sec%60:02d}"
-        else:
-            duration_str = "Unknown"
-        
-        # Add progress info
-        description += f"⏱️ {duration_str}"
+        # Add duration
+        description += f"⏱️ {song_info['duration']}"
         
         # Add queue info
         queue_count = len(self.queues.get(guild_id, []))
