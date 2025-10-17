@@ -11,6 +11,7 @@ from core_commands import setup_core_commands
 from music.commands import setup_music_commands
 from move.commands import setup_voice_commands
 from chat.commands import GlobalChatCommands
+from chat.category_commands import CategoryChatCommands
 
 # Load environment variables
 from dotenv import load_dotenv
@@ -40,8 +41,9 @@ async def on_ready():
     setup_music_commands(bot, music_player)
     setup_voice_commands(bot, voice_manager)
     
-    # Add global chat cog
+    # Add chat system cogs
     await bot.add_cog(GlobalChatCommands(bot))
+    await bot.add_cog(CategoryChatCommands(bot))
     
     # Sync slash commands
     try:
