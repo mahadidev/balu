@@ -51,30 +51,12 @@ class MusicPlayer:
             },
         }
         
-        # Playlist options
-        self.ytdl_playlist_options = {
-            'format': 'bestaudio/best',
-            'quiet': True,
-            'no_warnings': True,
-            'noplaylist': False,
-            'extract_flat': True,  # Faster playlist extraction
-            'socket_timeout': 8,
-            'retries': 1,
-            'ignoreerrors': True,
-            'extractor_args': {
-                'youtube': {
-                    'player_client': ['android_embedded'],
-                }
-            },
-        }
-        
         self.ffmpeg_options = {
             'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 2',
             'options': '-vn -bufsize 256k'
         }
         
         self.ytdl_fast = yt_dlp.YoutubeDL(self.ytdl_fast_options)
-        self.ytdl_playlist = yt_dlp.YoutubeDL(self.ytdl_playlist_options)
 
     async def join(self, ctx):
         """Join voice channel"""
@@ -181,33 +163,8 @@ class MusicPlayer:
             print(f"Error getting audio URL: {e}")
             return None, None
 
-    async def extract_playlist_info(self, playlist_url):
-        """Extract playlist information"""
-        try:
-            loop = asyncio.get_event_loop()
-            info = await asyncio.wait_for(
-                loop.run_in_executor(None, lambda: self.ytdl_playlist.extract_info(playlist_url, download=False)),
-                timeout=10.0
-            )
-            
-            if not info or 'entries' not in info or not info['entries']:
-                return None, None
-            
-            # Get playlist title and entries
-            playlist_title = info.get('title', 'Unknown Playlist')
-            entries = [entry for entry in info['entries'] if entry][:20]  # Limit to 20 songs
-            
-            return playlist_title, entries
-            
-        except asyncio.TimeoutError:
-            print(f"Timeout extracting playlist: {playlist_url}")
-            return None, None
-        except Exception as e:
-            print(f"Error extracting playlist: {e}")
-            return None, None
-
     async def play(self, ctx, query):
-        """ULTRA FAST play - start music within 1-2 seconds"""
+        """BULLETPROOF play - always play something"""
         # Ensure user is in voice channel
         if not ctx.author.voice:
             await ctx.send('❌ You need to be in a voice channel!')
@@ -219,186 +176,143 @@ class MusicPlayer:
 
         voice_client = self.voice_clients[ctx.guild.id]
         
-        # Check if it's a playlist URL
-        is_playlist = any(keyword in query for keyword in ['list=', '&start_radio=', 'playlist?'])
+        # Check if it's a playlist URL with video ID
+        is_playlist_with_video = 'watch?v=' in query and 'list=' in query
         
-        if is_playlist:
-            await self.handle_playlist(ctx, query, voice_client)
+        if is_playlist_with_video:
+            await self.handle_playlist_url(ctx, query, voice_client)
         else:
             await self.handle_single_song(ctx, query, voice_client)
 
-    async def handle_playlist(self, ctx, playlist_url, voice_client):
-        """Handle playlist - play first song immediately, load rest in background"""
-        search_msg = await ctx.send('🎵 **Loading playlist...**')
+    async def handle_playlist_url(self, ctx, playlist_url, voice_client):
+        """Handle playlist URLs by extracting the single video first"""
+        search_msg = await ctx.send('🎵 **Processing YouTube link...**')
         
         try:
-            # For YouTube Radio/Playlist URLs, extract just the video ID first
-            if 'watch?v=' in playlist_url and 'list=' in playlist_url:
-                # Extract just the video ID to play as single song first
-                video_id = playlist_url.split('watch?v=')[1].split('&')[0]
-                single_url = f"https://www.youtube.com/watch?v={video_id}"
-                
-                # Try to play the single video first
-                audio_url, title = await self.get_audio_url_ultra_fast(single_url)
-                
-                if audio_url:
-                    # Create song info for first song
-                    song_info = {
-                        'title': title,
-                        'duration': 'Loading...',
-                        'duration_seconds': 0,
-                        'thumbnail': None,
-                        'author': 'Loading...',
-                        'webpage_url': single_url,
-                        'url': audio_url,
-                        'requested_by': ctx.author.name
-                    }
-                    
-                    # Add first song to queue and play immediately
-                    self.add_to_queue(ctx.guild.id, song_info)
-                    
-                    if not voice_client.is_playing():
-                        await search_msg.delete()
-                        await self.play_instant(ctx, song_info)
-                        
-                        # Send playlist started message
-                        await ctx.send(f'🎵 **Started YouTube Radio**\n▶️ Playing first song, loading more...')
-                    else:
-                        await search_msg.edit(content=f'✅ **Added to queue:** {title}')
-                    
-                    # Now extract the full playlist in background
-                    asyncio.create_task(self.load_full_playlist(ctx, playlist_url))
-                    return
-            
-            # If single video extraction failed, try full playlist extraction
-            playlist_title, entries = await self.extract_playlist_info(playlist_url)
-            
-            if not entries:
-                await search_msg.edit(content='❌ **Could not load playlist!**')
+            # Extract video ID from the URL
+            video_id = self.extract_video_id(playlist_url)
+            if not video_id:
+                await search_msg.edit(content='❌ **Invalid YouTube URL!**')
                 return
             
-            # Get first song URL immediately
-            first_entry = entries[0]
-            first_url = first_entry.get('url') or f"https://www.youtube.com/watch?v={first_entry['id']}"
+            # Create single video URL
+            single_url = f"https://www.youtube.com/watch?v={video_id}"
             
-            audio_url, title = await self.get_audio_url_ultra_fast(first_url)
+            # Try to play the single video
+            audio_url, title = await self.get_audio_url_ultra_fast(single_url)
             
             if not audio_url:
-                await search_msg.edit(content='❌ **Could not play first song!**')
+                await search_msg.edit(content='❌ **Could not play this video!**')
                 return
             
-            # Create song info for first song
+            # Create song info
             song_info = {
-                'title': first_entry.get('title', title),
+                'title': title,
                 'duration': 'Loading...',
                 'duration_seconds': 0,
                 'thumbnail': None,
-                'author': first_entry.get('uploader', 'Unknown Artist'),
-                'webpage_url': first_url,
+                'author': 'Loading...',
+                'webpage_url': single_url,
                 'url': audio_url,
                 'requested_by': ctx.author.name
             }
             
-            # Add first song to queue and play immediately
+            # Add to queue
             self.add_to_queue(ctx.guild.id, song_info)
             
             if not voice_client.is_playing():
                 await search_msg.delete()
                 await self.play_instant(ctx, song_info)
                 
-                # Send playlist started message
-                await ctx.send(f'🎵 **Started playlist:** {playlist_title}\n▶️ Playing first of {len(entries)} songs...')
+                # Send success message
+                await ctx.send(f'🎵 **Now Playing:** {title}')
             else:
-                await search_msg.edit(content=f'✅ **Added playlist:** {playlist_title} ({len(entries)} songs)')
+                await search_msg.edit(content=f'✅ **Added to queue:** {title}')
             
-            # Load remaining songs in background
-            if len(entries) > 1:
-                asyncio.create_task(self.load_remaining_songs(ctx, entries[1:], playlist_title))
+            # Try to load more songs from playlist in background (silently)
+            asyncio.create_task(self.try_load_playlist_songs(ctx, playlist_url))
                 
         except Exception as e:
-            print(f"Playlist error: {e}")
-            await search_msg.edit(content='❌ **Error loading playlist!**')
+            print(f"Playlist URL error: {e}")
+            await search_msg.edit(content='❌ **Error processing YouTube link!**')
 
-    async def load_full_playlist(self, ctx, playlist_url):
-        """Load full playlist in background after first song starts"""
+    def extract_video_id(self, url):
+        """Extract video ID from YouTube URL"""
         try:
-            playlist_title, entries = await self.extract_playlist_info(playlist_url)
-            
-            if entries and len(entries) > 1:
-                guild_id = ctx.guild.id
-                loaded_count = 0
-                
-                for entry in entries[1:10]:  # Load next 9 songs
-                    try:
-                        video_url = entry.get('url') or f"https://www.youtube.com/watch?v={entry['id']}"
-                        
-                        # Get audio URL for each song
-                        audio_url, title = await self.get_audio_url_ultra_fast(video_url)
-                        
-                        if audio_url:
-                            song_info = {
-                                'title': entry.get('title', title),
-                                'duration': 'Loading...',
-                                'duration_seconds': 0,
-                                'thumbnail': None,
-                                'author': entry.get('uploader', 'Unknown Artist'),
-                                'webpage_url': video_url,
-                                'url': audio_url,
-                                'requested_by': ctx.author.name
-                            }
-                            
-                            self.add_to_queue(guild_id, song_info)
-                            loaded_count += 1
-                            
-                            # Small delay to prevent overwhelming
-                            await asyncio.sleep(0.1)
-                            
-                    except Exception as e:
-                        print(f"Error loading playlist song: {e}")
-                        continue
-                
-                if loaded_count > 0:
-                    await ctx.send(f'✅ **Added {loaded_count} more songs from YouTube Radio**')
-                    
-        except Exception as e:
-            print(f"Error loading full playlist: {e}")
+            if 'watch?v=' in url:
+                return url.split('watch?v=')[1].split('&')[0]
+            elif 'youtu.be/' in url:
+                return url.split('youtu.be/')[1].split('?')[0]
+            return None
+        except:
+            return None
 
-    async def load_remaining_songs(self, ctx, remaining_entries, playlist_title):
-        """Load remaining playlist songs in background"""
-        guild_id = ctx.guild.id
-        loaded_count = 0
-        
-        for entry in remaining_entries:
-            try:
-                video_url = entry.get('url') or f"https://www.youtube.com/watch?v={entry['id']}"
-                
-                # Get audio URL for each song
-                audio_url, title = await self.get_audio_url_ultra_fast(video_url)
-                
-                if audio_url:
-                    song_info = {
-                        'title': entry.get('title', title),
-                        'duration': 'Loading...',
-                        'duration_seconds': 0,
-                        'thumbnail': None,
-                        'author': entry.get('uploader', 'Unknown Artist'),
-                        'webpage_url': video_url,
-                        'url': audio_url,
-                        'requested_by': ctx.author.name
+    async def try_load_playlist_songs(self, ctx, playlist_url):
+        """Try to load playlist songs in background (silent failure)"""
+        try:
+            # Use a separate yt-dlp instance for playlist extraction
+            playlist_opts = {
+                'format': 'bestaudio/best',
+                'quiet': True,
+                'no_warnings': True,
+                'noplaylist': False,
+                'extract_flat': True,
+                'socket_timeout': 8,
+                'retries': 1,
+                'ignoreerrors': True,
+                'extractor_args': {
+                    'youtube': {
+                        'player_client': ['android_embedded'],
                     }
+                },
+            }
+            
+            playlist_ytdl = yt_dlp.YoutubeDL(playlist_opts)
+            
+            loop = asyncio.get_event_loop()
+            info = await loop.run_in_executor(
+                None, lambda: playlist_ytdl.extract_info(playlist_url, download=False)
+            )
+            
+            if info and 'entries' in info and info['entries']:
+                entries = [entry for entry in info['entries'] if entry][:10]  # Limit to 10
+                
+                if len(entries) > 1:
+                    guild_id = ctx.guild.id
+                    loaded_count = 0
                     
-                    self.add_to_queue(guild_id, song_info)
-                    loaded_count += 1
+                    # Skip first entry (already playing)
+                    for entry in entries[1:]:
+                        try:
+                            video_url = f"https://www.youtube.com/watch?v={entry['id']}"
+                            audio_url, title = await self.get_audio_url_ultra_fast(video_url)
+                            
+                            if audio_url:
+                                song_info = {
+                                    'title': entry.get('title', title),
+                                    'duration': 'Loading...',
+                                    'duration_seconds': 0,
+                                    'thumbnail': None,
+                                    'author': entry.get('uploader', 'Unknown Artist'),
+                                    'webpage_url': video_url,
+                                    'url': audio_url,
+                                    'requested_by': ctx.author.name
+                                }
+                                
+                                self.add_to_queue(guild_id, song_info)
+                                loaded_count += 1
+                                
+                                await asyncio.sleep(0.1)  # Small delay
+                                
+                        except Exception as e:
+                            continue
                     
-                    # Small delay to prevent overwhelming
-                    await asyncio.sleep(0.1)
-                    
-            except Exception as e:
-                print(f"Error loading playlist song: {e}")
-                continue
-        
-        if loaded_count > 0:
-            await ctx.send(f'✅ **Added {loaded_count} songs from:** {playlist_title}')
+                    if loaded_count > 0:
+                        await ctx.send(f'✅ **Added {loaded_count} more songs from YouTube Radio**')
+                        
+        except Exception as e:
+            # Silent failure - we already have the first song playing
+            pass
 
     async def handle_single_song(self, ctx, query, voice_client):
         """Handle single song playback"""
@@ -647,7 +561,7 @@ class MusicPlayer:
         else:
             self.queues[guild_id].append(song_info)
 
-    # ... (keep all the other methods the same as before)
+    # ... (keep all the other methods the same)
 
 # Keep the same MusicControlView class as before
 
