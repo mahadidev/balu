@@ -162,11 +162,26 @@ class MusicPlayer:
 
     async def play(self, ctx, query):
         """Fast play music"""
+        # Ensure user is in voice channel
+        if not ctx.author.voice:
+            await ctx.send('❌ You need to be in a voice channel!')
+            return
+
         if ctx.guild.id not in self.voice_clients:
             if not await self.join(ctx):
                 return
 
         voice_client = self.voice_clients[ctx.guild.id]
+        
+        # Double-check connection
+        if not voice_client.is_connected():
+            try:
+                channel = ctx.author.voice.channel
+                voice_client = await channel.connect()
+                self.voice_clients[ctx.guild.id] = voice_client
+            except Exception as e:
+                await ctx.send('❌ Could not connect to voice channel!')
+                return
         
         # Handle playlists separately
         if any(keyword in query for keyword in ['list=', 'playlist?']):
@@ -373,8 +388,23 @@ class MusicPlayer:
             return
 
         voice_client = self.voice_clients.get(guild_id)
-        if not voice_client:
-            return
+        if not voice_client or not voice_client.is_connected():
+            # Try to reconnect if not connected
+            if ctx.author.voice and ctx.author.voice.channel:
+                try:
+                    channel = ctx.author.voice.channel
+                    if guild_id in self.voice_clients:
+                        voice_client = await self.voice_clients[guild_id].move_to(channel)
+                    else:
+                        voice_client = await channel.connect()
+                        self.voice_clients[guild_id] = voice_client
+                    await ctx.send(f'🔊 Reconnected to **{channel.name}**')
+                except Exception as e:
+                    await ctx.send('❌ Could not connect to voice channel!')
+                    return
+            else:
+                await ctx.send('❌ Not connected to voice channel and no channel to join!')
+                return
 
         # Get song with pre-extracted URL
         song_info = self.queues[guild_id][0]
@@ -390,9 +420,14 @@ class MusicPlayer:
             self.current_songs[guild_id] = song_info
             self.start_times[guild_id] = time.time()
             
-            voice_client.play(source, after=lambda e: asyncio.run_coroutine_threadsafe(
-                self.song_finished(ctx, e), self.bot.loop
-            ))
+            def after_play(error):
+                if error:
+                    print(f"Playback error: {error}")
+                asyncio.run_coroutine_threadsafe(
+                    self.song_finished(ctx, error), self.bot.loop
+                )
+            
+            voice_client.play(source, after=after_play)
 
             # Send playing message
             embed = discord.Embed(
@@ -413,11 +448,18 @@ class MusicPlayer:
     async def song_finished(self, ctx, error=None):
         """Handle when a song finishes"""
         if error:
-            print(f"Playback error: {error}")
+            print(f"Playback finished with error: {error}")
         
         await asyncio.sleep(1)
         
         guild_id = ctx.guild.id
+        
+        # Check if still connected to voice
+        voice_client = self.voice_clients.get(guild_id)
+        if not voice_client or not voice_client.is_connected():
+            print("Not connected to voice, skipping next song")
+            return
+        
         repeat_mode = self.get_repeat_mode(guild_id)
         current_song = self.current_songs.get(guild_id)
         
