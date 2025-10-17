@@ -1,5 +1,5 @@
 discord.py[voice]
-yt-dlp>=2023.12.30
+yt-dlp>=2025.10.14
 PyNaCl
 pytz
 python-dotenv

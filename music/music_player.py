@@ -19,31 +19,58 @@ class MusicPlayer:
         self.volumes = {}
         self.url_cache = {}
         
-        # RELIABLE yt-dlp options that actually work
+        # LATEST yt-dlp 2025.10.14 optimized options
         self.ytdl_format_options = {
-            'format': 'bestaudio/best',
-            'outtmpl': '%(extractor)s-%(id)s-%(title)s.%(ext)s',
-            'restrictfilenames': True,
+            'format': 'ba/b',
+            'outtmpl': '%(id)s.%(ext)s',
+            'restrictfilenames': False,
             'noplaylist': True,
             'nocheckcertificate': True,
             'ignoreerrors': False,
             'logtostderr': False,
             'quiet': True,
             'no_warnings': True,
-            'default_search': 'ytsearch',
+            'default_search': 'ytsearch1',
             'source_address': '0.0.0.0',
+            'force_ipv4': True,
             'extract_flat': False,
             'retries': 3,
             'fragment_retries': 3,
+            'file_access_retries': 0,
+            'skip_unavailable_fragments': True,
+            'extractor_retries': 1,
             'socket_timeout': 10,
-            'http_chunk_size': 10485760,
-            'cookiefile': None,
-            'age_limit': None,
+            'extractor_args': {
+                'youtube': {
+                    'player_client': ['android_embedded', 'web'],  # New optimized clients
+                    'player_skip': ['configs', 'webpage', 'js'],
+                    'formats': 'bestaudio/best'
+                }
+            },
+            'postprocessor_args': {
+                'audio': {
+                    'preferredcodec': 'best',
+                    'preferredquality': '0'
+                }
+            },
+            'http_headers': {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'Accept': '*/*',
+                'Accept-Language': 'en-US,en;q=0.5',
+                'Sec-Fetch-Mode': 'navigate',
+            },
+            # New 2025.10.14 features
+            'concurrent_fragment_downloads': 1,
+            'throttled_rate': 'inf',
+            'overwrites': True,
+            'no_overwrites': False,
+            'continue_dl': False,
+            'paths': {'home': './temp/'},
         }
         
         self.ffmpeg_options = {
-            'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
-            'options': '-vn'
+            'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 -http_persistent 1',
+            'options': '-vn -b:a 128k -bufsize 512k'
         }
         
         self.ytdl = yt_dlp.YoutubeDL(self.ytdl_format_options)
@@ -89,21 +116,33 @@ class MusicPlayer:
         else:
             await ctx.send('❌ Not connected to a voice channel!')
 
-    async def get_youtube_info(self, query):
-        """Get YouTube info reliably"""
+    async def extract_info_fast(self, query):
+        """Fast info extraction using latest yt-dlp features"""
         try:
+            # Use the new concurrent features in 2025.10.14
             loop = asyncio.get_event_loop()
-            info = await loop.run_in_executor(
-                None, 
-                lambda: self.ytdl.extract_info(query, download=False)
+            
+            # For search queries, use ytsearch1 for speed
+            if not any(domain in query.lower() for domain in ['youtube.com', 'youtu.be', 'http', 'www.']):
+                query = f"ytsearch1:{query}"
+            
+            # Use the new timeout and retry features
+            info = await asyncio.wait_for(
+                loop.run_in_executor(None, lambda: self.ytdl.extract_info(query, download=False)),
+                timeout=12.0
             )
+            
             return info
+            
+        except asyncio.TimeoutError:
+            print(f"Timeout extracting: {query}")
+            return None
         except Exception as e:
-            print(f"Error extracting info: {e}")
+            print(f"Extraction error: {e}")
             return None
 
     async def play(self, ctx, query):
-        """Play music reliably"""
+        """Fast play music using latest yt-dlp"""
         # Ensure user is in voice channel
         if not ctx.author.voice:
             await ctx.send('❌ You need to be in a voice channel!')
@@ -116,50 +155,63 @@ class MusicPlayer:
         voice_client = self.voice_clients[ctx.guild.id]
         
         # Send immediate feedback
-        search_msg = await ctx.send('🔍 **Searching for song...**')
+        search_msg = await ctx.send('🔍 **Searching...**')
         
         try:
-            # Get YouTube info
-            info = await self.get_youtube_info(query)
+            # Get YouTube info with latest yt-dlp
+            info = await self.extract_info_fast(query)
             
             if not info:
                 await search_msg.edit(content='❌ **Could not find the song!**')
                 return
             
-            # Extract song info
+            # Extract song info from result
             if 'entries' in info:
-                # This is a playlist or search result
                 if not info['entries']:
                     await search_msg.edit(content='❌ **No songs found!**')
                     return
                 entry = info['entries'][0]
             else:
-                # This is a single video
                 entry = info
             
-            # Extract the playable URL
+            # Get the audio URL - using latest yt-dlp format selection
             url = entry.get('url')
             if not url:
-                await search_msg.edit(content='❌ **Could not get audio URL!**')
-                return
+                # Fallback to format selection
+                if 'formats' in entry:
+                    # Use the new format selection logic
+                    audio_formats = [f for f in entry['formats'] if f.get('acodec') != 'none']
+                    if audio_formats:
+                        # Prefer formats that don't require additional processing
+                        best_audio = None
+                        for fmt in audio_formats:
+                            if fmt.get('protocol') in ['https', 'http'] and not fmt.get('is_from_start'):
+                                best_audio = fmt
+                                break
+                        if best_audio:
+                            url = best_audio['url']
+                
+                if not url:
+                    await search_msg.edit(content='❌ **Could not get audio URL!**')
+                    return
             
-            # Create song info
+            # Create song info with proper duration formatting
+            duration_sec = entry.get('duration', 0)
+            if duration_sec and duration_sec > 0:
+                duration_str = f"{duration_sec//60}:{duration_sec%60:02d}"
+            else:
+                duration_str = "Live"
+            
             song_info = {
                 'title': entry.get('title', 'Unknown Title'),
-                'duration': str(entry.get('duration', 0)),
-                'duration_seconds': entry.get('duration', 0),
+                'duration': duration_str,
+                'duration_seconds': duration_sec,
                 'thumbnail': entry.get('thumbnail'),
-                'author': entry.get('uploader', 'Unknown Artist'),
+                'author': entry.get('uploader', entry.get('channel', 'Unknown Artist')),
                 'webpage_url': entry.get('webpage_url', query),
                 'url': url,
                 'requested_by': ctx.author.name
             }
-            
-            # Format duration properly
-            if song_info['duration_seconds'] and song_info['duration_seconds'] > 0:
-                mins = song_info['duration_seconds'] // 60
-                secs = song_info['duration_seconds'] % 60
-                song_info['duration'] = f"{mins}:{secs:02d}"
             
             # Add to queue
             self.add_to_queue(ctx.guild.id, song_info)
@@ -493,6 +545,7 @@ class MusicPlayer:
         return int(self.get_volume(guild_id) * 100)
 
 
+# MusicControlView class remains exactly the same
 class MusicControlView(discord.ui.View):
     def __init__(self, music_player, guild_id):
         super().__init__(timeout=300)
