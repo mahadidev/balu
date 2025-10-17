@@ -18,6 +18,7 @@ class MusicPlayer:
         self.shuffle_modes = {}
         self.volumes = {}
         self.url_cache = {}
+        self.song_history = {}  # Track previous songs for each guild
         
         # ULTRA FAST yt-dlp options
         self.ytdl_fast_options = {
@@ -93,6 +94,8 @@ class MusicPlayer:
                 del self.music_messages[ctx.guild.id]
             if ctx.guild.id in self.volumes:
                 del self.volumes[ctx.guild.id]
+            if ctx.guild.id in self.song_history:
+                del self.song_history[ctx.guild.id]
                 
             await ctx.send('👋 Left voice channel!')
         else:
@@ -381,6 +384,17 @@ class MusicPlayer:
                 volume=self.get_volume(guild_id)
             )
             
+            # Add current song to history before changing it
+            if guild_id in self.current_songs:
+                old_song = self.current_songs[guild_id]
+                if guild_id not in self.song_history:
+                    self.song_history[guild_id] = []
+                self.song_history[guild_id].append(old_song.copy())
+                
+                # Keep only last 10 songs in history
+                if len(self.song_history[guild_id]) > 10:
+                    self.song_history[guild_id].pop(0)
+            
             # Remove from queue and set as current
             self.queues[guild_id].pop(0)
             self.current_songs[guild_id] = current_song
@@ -576,6 +590,44 @@ class MusicPlayer:
         else:
             await ctx.send('❌ No music is playing!')
 
+    async def previous(self, ctx):
+        """Play previous song"""
+        guild_id = ctx.guild.id
+        
+        # Check if there's a song history
+        if guild_id not in self.song_history or not self.song_history[guild_id]:
+            await ctx.send('❌ No previous songs in history!')
+            return
+        
+        voice_client = self.voice_clients.get(guild_id)
+        if not voice_client:
+            await ctx.send('❌ Not connected to a voice channel!')
+            return
+        
+        # Get the last song from history
+        previous_song = self.song_history[guild_id].pop()
+        
+        # Add current song back to the front of queue if it exists
+        if guild_id in self.current_songs:
+            current_song = self.current_songs[guild_id]
+            if guild_id not in self.queues:
+                self.queues[guild_id] = []
+            self.queues[guild_id].insert(0, current_song.copy())
+        
+        # Add previous song to front of queue
+        if guild_id not in self.queues:
+            self.queues[guild_id] = []
+        self.queues[guild_id].insert(0, previous_song)
+        
+        # Stop current playback to trigger next song
+        if voice_client.is_playing():
+            voice_client.stop()
+        else:
+            # If nothing is playing, start the previous song directly
+            await self.play_instant(ctx, previous_song)
+        
+        await ctx.send('⏪ Playing previous song!')
+
     async def stop(self, ctx):
         """Stop music and clear queue"""
         guild_id = ctx.guild.id
@@ -694,7 +746,7 @@ class MusicPlayer:
         return new_mode
     
     def get_volume(self, guild_id):
-        return self.volumes.get(guild_id, 0.5)
+        return self.volumes.get(guild_id, 0.2)  # Default 20% volume
     
     def set_volume(self, guild_id, volume):
         volume = max(0.0, min(1.0, volume))
@@ -702,7 +754,7 @@ class MusicPlayer:
         return volume
     
     def get_volume_percentage(self, guild_id):
-        return int(self.get_volume(guild_id) * 100)
+        return int(self.get_volume(guild_id) * 100)  # Returns 20% by default
 
 
 # Keep the same MusicControlView class from your previous code
@@ -714,7 +766,38 @@ class MusicControlView(discord.ui.View):
     
     @discord.ui.button(emoji="⏪", style=discord.ButtonStyle.primary, row=0)
     async def previous_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_message("⏪ Previous track feature coming soon!", ephemeral=True)
+        guild_id = self.guild_id
+        
+        # Check if there's a song history
+        if guild_id not in self.music_player.song_history or not self.music_player.song_history[guild_id]:
+            await interaction.response.send_message('❌ No previous songs in history!', ephemeral=True)
+            return
+        
+        voice_client = self.music_player.voice_clients.get(guild_id)
+        if not voice_client:
+            await interaction.response.send_message('❌ Not connected to a voice channel!', ephemeral=True)
+            return
+        
+        # Get the last song from history
+        previous_song = self.music_player.song_history[guild_id].pop()
+        
+        # Add current song back to the front of queue if it exists
+        if guild_id in self.music_player.current_songs:
+            current_song = self.music_player.current_songs[guild_id]
+            if guild_id not in self.music_player.queues:
+                self.music_player.queues[guild_id] = []
+            self.music_player.queues[guild_id].insert(0, current_song.copy())
+        
+        # Add previous song to front of queue
+        if guild_id not in self.music_player.queues:
+            self.music_player.queues[guild_id] = []
+        self.music_player.queues[guild_id].insert(0, previous_song)
+        
+        # Stop current playback to trigger next song
+        if voice_client.is_playing():
+            voice_client.stop()
+        
+        await interaction.response.send_message('⏪ Playing previous song!', ephemeral=True)
     
     @discord.ui.button(emoji="⏸️", style=discord.ButtonStyle.primary, row=0)
     async def play_pause_button(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -775,6 +858,8 @@ class MusicControlView(discord.ui.View):
                 del self.music_player.music_messages[self.guild_id]
             if self.guild_id in self.music_player.volumes:
                 del self.music_player.volumes[self.guild_id]
+            if self.guild_id in self.music_player.song_history:
+                del self.music_player.song_history[self.guild_id]
                 
             await interaction.response.send_message("👋 Left voice channel!", ephemeral=True)
         else:

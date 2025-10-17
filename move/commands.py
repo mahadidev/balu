@@ -5,13 +5,6 @@ from discord import app_commands
 def setup_voice_commands(bot, voice_manager):
     """Setup voice management commands"""
     
-    @bot.command()
-    async def move(ctx, *, channel_name=None):
-        """Move bot to a specific voice channel or your current channel"""
-        if not voice_manager:
-            await ctx.send('⚠️ Voice system is still starting up. Please try again in a moment.')
-            return
-        await voice_manager.move_bot_to_channel(ctx, channel_name)
 
     @bot.command()
     async def moveall(ctx, *, channel_name=None):
@@ -97,32 +90,3 @@ def setup_voice_commands(bot, voice_manager):
             print(f"Slash moveall error: {e}")
             await interaction.followup.send(f'❌ Failed to move members to **{channel.name}**!')
 
-    @bot.tree.command(name="move", description="Move bot to a selected voice channel")
-    @app_commands.describe(channel="Select the voice channel to move bot to (optional)")
-    async def move_slash(interaction: discord.Interaction, channel: discord.VoiceChannel = None):
-        """Move bot to selected voice channel with dropdown"""
-        guild = interaction.guild
-        
-        # If no channel provided, move to user's current channel
-        if not channel:
-            if interaction.user.voice and interaction.user.voice.channel:
-                channel = interaction.user.voice.channel
-            else:
-                await interaction.response.send_message('❌ You need to be in a voice channel or select a channel!', ephemeral=True)
-                return
-
-        try:
-            # Check if bot is currently in a voice channel
-            voice_client = discord.utils.get(bot.voice_clients, guild=guild)
-            
-            if voice_client:
-                await voice_client.move_to(channel)
-                await interaction.response.send_message(f'✅ Moved to **{channel.name}**!')
-            else:
-                # Bot not in voice, join the target channel
-                await channel.connect()
-                await interaction.response.send_message(f'✅ Joined **{channel.name}**!')
-                
-        except Exception as e:
-            print(f"Slash move error: {e}")
-            await interaction.response.send_message(f'❌ Failed to move to **{channel.name}**!', ephemeral=True)

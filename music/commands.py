@@ -137,34 +137,6 @@ def setup_music_commands(bot, music_player):
         ctx = SlashContext(interaction)
         await music_player.play(ctx, query)
 
-    @bot.tree.command(name="nowplaying", description="Show the current music player interface")
-    async def nowplaying_slash(interaction: discord.Interaction):
-        """Show current music player interface with controls"""
-        if not music_player:
-            await interaction.response.send_message('⚠️ Music system is still starting up. Please try again in a moment.', ephemeral=True)
-            return
-        
-        guild_id = interaction.guild.id
-        
-        # Check if music is playing
-        voice_client = music_player.voice_clients.get(guild_id)
-        if not voice_client or not voice_client.is_connected():
-            await interaction.response.send_message('❌ Not connected to a voice channel!', ephemeral=True)
-            return
-        
-        current_song = music_player.current_songs.get(guild_id)
-        if not current_song:
-            await interaction.response.send_message('❌ No music is currently playing!', ephemeral=True)
-            return
-        
-        # Create enhanced interface
-        embed, view = await music_player.create_music_interface(
-            type('Context', (), {'guild': interaction.guild, 'author': interaction.user})(),
-            current_song,
-            is_playing=voice_client.is_playing()
-        )
-        
-        await interaction.response.send_message(embed=embed, view=view)
 
     @bot.command()
     async def repeat(ctx, mode=None):
