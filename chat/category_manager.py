@@ -106,9 +106,9 @@ class CategoryChatManager:
         
         # Create formatted message
         if content.strip():
-            message_content = f"**{content}**\n\n-# [{category_name.upper()}] {original_message.guild.name} • {original_message.author.mention}"
+            message_content = f"{original_message.guild.name} • {original_message.author.mention}: {content}"
         else:
-            message_content = f"-# [{category_name.upper()}] {original_message.guild.name} • {original_message.author.mention}"
+            message_content = f"{original_message.guild.name} • {original_message.author.mention}"
         
         # Handle attachments
         if original_message.attachments:

@@ -9,7 +9,8 @@ class GlobalChatManager:
         self.bot = bot
         self.db = DatabaseManager()
         self.last_message_time: Dict[str, float] = {}
-        self.rate_limit_seconds = int(self.db.get_global_chat_setting('rate_limit_seconds') or 3)
+        self.last_message_content: Dict[str, str] = {}
+        self.rate_limit_seconds = int(self.db.get_global_chat_setting('rate_limit_seconds') or 10)
         self.max_message_length = int(self.db.get_global_chat_setting('max_message_length') or 2000)
         self.enable_filtering = self.db.get_global_chat_setting('enable_filtering') == 'true'
         
@@ -27,17 +28,22 @@ class GlobalChatManager:
         if not self.db.is_global_chat_channel(str(message.guild.id), str(message.channel.id)):
             return
         
-        # Rate limiting
+        # Rate limiting and duplicate prevention
         user_key = f"{message.guild.id}_{message.author.id}"
         current_time = time.time()
         
+        # Check rate limit (10 seconds)
         if user_key in self.last_message_time:
             time_diff = current_time - self.last_message_time[user_key]
             if time_diff < self.rate_limit_seconds:
                 await message.add_reaction("⏱️")
                 return
         
-        self.last_message_time[user_key] = current_time
+        # Check for duplicate messages
+        if user_key in self.last_message_content:
+            if self.last_message_content[user_key] == message.content.strip():
+                await message.add_reaction("🔄")
+                return
         
         # Message length check
         if len(message.content) > self.max_message_length:
@@ -48,6 +54,10 @@ class GlobalChatManager:
         if self.enable_filtering and self._contains_blocked_content(message.content):
             await message.add_reaction("🚫")
             return
+        
+        # Update tracking only after all checks pass
+        self.last_message_time[user_key] = current_time
+        self.last_message_content[user_key] = message.content.strip()
         
         # Log the message
         self.db.log_global_chat_message(
@@ -77,7 +87,7 @@ class GlobalChatManager:
         channels = self.db.get_global_chat_channels()
         
         # Create plain text message
-        message_content = f"**{original_message.content}**\n\n-# {original_message.guild} • {original_message.author.mention}"
+        message_content = f"{original_message.guild} • {original_message.author.mention}  {original_message.content}"
         
         # Handle attachments
         if original_message.attachments:
