@@ -24,8 +24,9 @@ class GlobalChatManager:
         if message.author.bot:
             return
         
-        # Check if this is a registered global chat channel
-        if not self.db.is_global_chat_channel(str(message.guild.id), str(message.channel.id)):
+        # Check if this is a registered global chat channel and get room name
+        room_name = self.db.is_global_chat_channel(str(message.guild.id), str(message.channel.id))
+        if not room_name:
             return
         
         # Rate limiting and duplicate prevention
@@ -62,6 +63,7 @@ class GlobalChatManager:
         # Log the message
         self.db.log_global_chat_message(
             str(message.id),
+            room_name,
             str(message.guild.id),
             str(message.channel.id),
             str(message.author.id),
@@ -70,8 +72,8 @@ class GlobalChatManager:
             message.content
         )
         
-        # Broadcast to all other registered channels
-        await self.broadcast_message(message)
+        # Broadcast to all other registered channels in the same room
+        await self.broadcast_message(message, room_name)
     
     def _contains_blocked_content(self, content: str) -> bool:
         """Check if message contains blocked content"""
@@ -81,17 +83,21 @@ class GlobalChatManager:
                 return True
         return False
     
-    async def broadcast_message(self, original_message: discord.Message):
-        """Broadcast message to all registered global chat channels"""
-        # Get all registered channels
-        channels = self.db.get_global_chat_channels()
-
+    async def broadcast_message(self, original_message: discord.Message, room_name: str):
+        """Broadcast message to all registered global chat channels in the same room"""
+        # Get all registered channels in the same room
+        channels = self.db.get_global_chat_channels(room_name)
+        
+        print(f"🔄 Broadcasting message from {original_message.guild.name} to room '{room_name}' - Found {len(channels)} registered channels")
+        for ch in channels:
+            print(f"   - {ch['guild_name']} #{ch['channel_name']} (ID: {ch['channel_id']})")
 
         original_message_url = f"https://discord.com/channels/{original_message.guild.id}/{original_message.channel.id}/{original_message.id}"
         
-        # Create plain text message
-        message_content = f"{original_message.guild} • {original_message.author.mention}  \n\n{original_message.content} \n\n{original_message_url}"
-        message_content=''
+        # Create plain text message with room name
+        message_content = f"{original_message_url} • {original_message.author.mention}**: ** {original_message.content} \n\n"
+        
+        print(f"📝 Message content: {message_content[:100]}..." if len(message_content) > 100 else f"📝 Message content: {message_content}")
         
         # Handle attachments
         if original_message.attachments:
@@ -103,35 +109,47 @@ class GlobalChatManager:
         
         # Send to all other channels
         for channel_info in channels:
+            print(f"🎯 Processing channel: {channel_info['guild_name']} #{channel_info['channel_name']}")
+            
             # Skip the original channel
             if (channel_info['guild_id'] == str(original_message.guild.id) and 
                 channel_info['channel_id'] == str(original_message.channel.id)):
+                print(f"   ⏭️ Skipping original channel")
                 continue
             
             try:
                 guild = self.bot.get_guild(int(channel_info['guild_id']))
                 if not guild:
+                    print(f"   ❌ Guild not found: {channel_info['guild_id']}")
                     continue
+                
+                print(f"   ✅ Guild found: {guild.name}")
                 
                 channel = guild.get_channel(int(channel_info['channel_id']))
                 if not channel:
+                    print(f"   ❌ Channel not found: {channel_info['channel_id']}")
                     continue
+                
+                print(f"   ✅ Channel found: #{channel.name}")
                 
                 # Check if bot has permission to send messages
                 if not channel.permissions_for(guild.me).send_messages:
+                    print(f"   ❌ No permission to send messages")
                     continue
                 
+                print(f"   ✅ Permissions OK, sending message...")
                 await channel.send(message_content)
+                print(f"   ✅ Message sent successfully!")
                 
             except discord.Forbidden:
-                print(f"No permission to send message in {channel_info['guild_name']} - {channel_info['channel_name']}")
+                print(f"   ❌ Forbidden: No permission to send message in {channel_info['guild_name']} - {channel_info['channel_name']}")
             except discord.NotFound:
-                print(f"Channel not found: {channel_info['guild_name']} - {channel_info['channel_name']}")
+                print(f"   ❌ Not Found: Channel not found: {channel_info['guild_name']} - {channel_info['channel_name']}")
             except Exception as e:
-                print(f"Error sending message to {channel_info['guild_name']}: {e}")
+                print(f"   ❌ Error sending message to {channel_info['guild_name']}: {e}")
     
-    async def register_channel(self, guild: discord.Guild, channel: discord.TextChannel, registered_by: discord.Member) -> str:
-        """Register a channel for global chat"""
+    async def register_channel(self, guild: discord.Guild, channel: discord.TextChannel, room_name: str, registered_by: discord.Member) -> str:
+        """Register a channel for global chat room"""
         # Check if user has manage channels permission
         if not registered_by.guild_permissions.manage_channels:
             return "You need 'Manage Channels' permission to register for global chat."
@@ -139,17 +157,20 @@ class GlobalChatManager:
         result = self.db.register_global_chat_channel(
             str(guild.id),
             str(channel.id),
+            room_name,
             guild.name,
             channel.name,
             str(registered_by.id)
         )
         
         if result == True:
-            return f"✅ Successfully registered {channel.mention} for global chat!"
+            return f"✅ Successfully registered {channel.mention} to room '{room_name}'!"
         elif result == "updated":
-            return f"✅ Updated registration for {channel.mention} in global chat!"
+            return f"✅ Updated registration for {channel.mention} to room '{room_name}'!"
+        elif result == "room_not_found":
+            return f"❌ Room '{room_name}' does not exist. Create it first with `!globalchat createroom`."
         else:
-            return f"❌ Failed to register {channel.mention} for global chat."
+            return f"❌ Failed to register {channel.mention} to room '{room_name}'."
     
     async def unregister_channel(self, guild: discord.Guild, channel: discord.TextChannel, requested_by: discord.Member) -> str:
         """Unregister a channel from global chat"""
@@ -172,36 +193,3 @@ class GlobalChatManager:
         """Check if a channel is registered for global chat"""
         return self.db.is_global_chat_channel(guild_id, channel_id)
     
-    async def send_status_message(self, channel: discord.TextChannel):
-        """Send status message about global chat"""
-        channels = self.get_registered_channels()
-        
-        embed = discord.Embed(
-            title="🌐 Global Chat Status",
-            color=0x00ff00,
-            description=f"Connected to {len(channels)} servers"
-        )
-        
-        if channels:
-            server_list = []
-            for i, ch in enumerate(channels[:10], 1):  # Show max 10 servers
-                server_list.append(f"{i}. **{ch['guild_name']}** - #{ch['channel_name']}")
-            
-            if len(channels) > 10:
-                server_list.append(f"... and {len(channels) - 10} more servers")
-            
-            embed.add_field(
-                name="Connected Servers",
-                value="\n".join(server_list),
-                inline=False
-            )
-        
-        embed.add_field(
-            name="Settings",
-            value=f"Rate Limit: {self.rate_limit_seconds}s\nMax Length: {self.max_message_length} chars",
-            inline=True
-        )
-        
-        embed.set_footer(text="Messages are relayed across all connected servers")
-        
-        await channel.send(embed=embed)

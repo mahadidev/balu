@@ -15,6 +15,7 @@ import {
   Schema,
   Text,
 } from "@once-ui-system/core";
+import Image from "next/image";
 
 export async function generateMetadata() {
   return Meta.generate({
@@ -103,7 +104,7 @@ export default function Home() {
       
       {/* Commands Section */}
       <RevealFx translateY="12" delay={0.6}>
-        <Column fillWidth gap="40" marginBottom="40">
+        <Column fillWidth gap="40">
           <Row fillWidth gap="24" wrap s={{ direction: "column" }} horizontal="center">
             {/* Music Commands Card */}
             <Column flex={1} gap="24" padding="24" background="surface" radius="l" border="neutral-alpha-weak" borderStyle="solid">
@@ -113,7 +114,7 @@ export default function Home() {
               </Row>
               <Column gap="12">
                 <Row gap="16" vertical="center">
-                  <Badge background="brand-alpha-weak" onBackground="brand-strong" textVariant="code-default-s" paddingX="8" paddingY="4">/play</Badge>
+                  <Badge background="brand-alpha-weak" onBackground="brand-strong" textVariant="code-default-s" paddingX="8" paddingY="4">!play</Badge>
                   <Text variant="body-default-s" onBackground="neutral-weak">Start playing music</Text>
                 </Row>
                 <Row gap="16" vertical="center">
@@ -171,24 +172,10 @@ export default function Home() {
               </Column>
             </Column>
           </Row>
-          
-          <Column horizontal="center" paddingTop="24">
-            <Button
-              href="/work"
-              variant="tertiary"
-              size="m"
-              arrowIcon
-            >
-              View all commands
-            </Button>
-          </Column>
         </Column>
       </RevealFx>
       
-      <RevealFx translateY="16" delay={0.8}>
-        <Projects range={[1, 1]} />
-      </RevealFx>
-      <Projects range={[2]} />
+      <Projects range={[1]} />
       <Mailchimp />
     </Column>
   );
