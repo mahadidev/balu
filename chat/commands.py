@@ -50,6 +50,58 @@ class GlobalChatCommands(commands.Cog):
         
         await ctx.send(embed=embed)
     
+    # New simplified chat commands
+    @commands.command(name='chat_subscribe')
+    async def chat_subscribe(self, ctx, channel: discord.TextChannel = None):
+        """Subscribe current channel to global chat network"""
+        target_channel = channel or ctx.channel
+        
+        result = await self.chat_manager.register_channel(
+            ctx.guild, 
+            target_channel, 
+            ctx.author
+        )
+        
+        await ctx.send(result)
+    
+    @commands.command(name='chat_create')
+    async def chat_create(self, ctx, *, channel_name: str = None):
+        """Create a new chat channel and subscribe it to global chat"""
+        if not ctx.author.guild_permissions.manage_channels:
+            await ctx.send("❌ You need 'Manage Channels' permission to create chat channels.")
+            return
+        
+        if not channel_name:
+            await ctx.send("❌ Please provide a channel name. Usage: `!chat_create <channel_name>`")
+            return
+        
+        try:
+            # Create new text channel
+            new_channel = await ctx.guild.create_text_channel(
+                name=channel_name,
+                category=ctx.channel.category,
+                topic="Global chat channel - Connected to the network"
+            )
+            
+            # Automatically subscribe it to global chat
+            result = await self.chat_manager.register_channel(
+                ctx.guild, 
+                new_channel, 
+                ctx.author
+            )
+            
+            await ctx.send(f"✅ Created {new_channel.mention} and {result.lower()}")
+            
+        except discord.Forbidden:
+            await ctx.send("❌ I don't have permission to create channels.")
+        except Exception as e:
+            await ctx.send(f"❌ Failed to create channel: {str(e)}")
+    
+    @commands.command(name='chat_status')
+    async def chat_status(self, ctx):
+        """Show global chat network status"""
+        await self.chat_manager.send_status_message(ctx.channel)
+    
     @globalchat.command(name='register')
     async def register_channel(self, ctx, channel: discord.TextChannel = None):
         """Register a channel for global chat"""

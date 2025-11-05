@@ -85,9 +85,13 @@ class GlobalChatManager:
         """Broadcast message to all registered global chat channels"""
         # Get all registered channels
         channels = self.db.get_global_chat_channels()
+
+
+        original_message_url = f"https://discord.com/channels/{original_message.guild.id}/{original_message.channel.id}/{original_message.id}"
         
         # Create plain text message
-        message_content = f"{original_message.guild} • {original_message.author.mention}  {original_message.content}"
+        message_content = f"{original_message.guild} • {original_message.author.mention}  \n\n{original_message.content} \n\n{original_message_url}"
+        message_content=''
         
         # Handle attachments
         if original_message.attachments:
