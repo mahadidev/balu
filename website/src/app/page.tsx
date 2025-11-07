@@ -327,6 +327,132 @@ export default function Home() {
 				</RevealFx>
 			</div>
 
+			{/* Permissions Section */}
+			<div id="permissions" style={{ width: "100%" }}>
+				<RevealFx translateY="12" delay={0.8}>
+					<Column fillWidth gap="24" paddingY="32">
+						<Column horizontal="center" gap="16">
+							<Heading as="h2" variant="heading-strong-l">
+								🔒 Bot Permissions Explained
+							</Heading>
+							<Text
+								variant="body-default-l"
+								onBackground="neutral-weak"
+								wrap="balance"
+							>
+								Balu requires Administrator permissions to provide full functionality across your Discord server
+							</Text>
+						</Column>
+						
+						<Row
+							fillWidth
+							gap="20"
+							wrap
+							s={{ direction: 'column' }}
+							horizontal="center"
+						>
+							{/* Music Permissions */}
+							<Column
+								flex={1}
+								gap="16"
+								padding="20"
+								background="surface"
+								radius="l"
+								border="neutral-alpha-weak"
+								borderStyle="solid"
+							>
+								<Row gap="12" vertical="center">
+									<Text variant="display-strong-s">🎵</Text>
+									<Heading as="h3" variant="heading-strong-s">
+										Music Features
+									</Heading>
+								</Row>
+								<Column gap="8">
+									<Text variant="body-default-s" onBackground="neutral-weak">
+										<strong>Connect to Voice:</strong> Join any voice channel to play music
+									</Text>
+									<Text variant="body-default-s" onBackground="neutral-weak">
+										<strong>Speak Permission:</strong> Stream high-quality audio
+									</Text>
+									<Text variant="body-default-s" onBackground="neutral-weak">
+										<strong>Voice Activity:</strong> Detect playback status
+									</Text>
+								</Column>
+							</Column>
+
+							{/* Chat Management */}
+							<Column
+								flex={1}
+								gap="16"
+								padding="20"
+								background="surface"
+								radius="l"
+								border="neutral-alpha-weak"
+								borderStyle="solid"
+							>
+								<Row gap="12" vertical="center">
+									<Text variant="display-strong-s">💬</Text>
+									<Heading as="h3" variant="heading-strong-s">
+										Chat Management
+									</Heading>
+								</Row>
+								<Column gap="8">
+									<Text variant="body-default-s" onBackground="neutral-weak">
+										<strong>Send Messages:</strong> Respond to commands
+									</Text>
+									<Text variant="body-default-s" onBackground="neutral-weak">
+										<strong>Embed Links:</strong> Rich music controls
+									</Text>
+									<Text variant="body-default-s" onBackground="neutral-weak">
+										<strong>Manage Messages:</strong> Clean responses
+									</Text>
+								</Column>
+							</Column>
+
+							{/* Channel Management */}
+							<Column
+								flex={1}
+								gap="16"
+								padding="20"
+								background="surface"
+								radius="l"
+								border="neutral-alpha-weak"
+								borderStyle="solid"
+							>
+								<Row gap="12" vertical="center">
+									<Text variant="display-strong-s">🔧</Text>
+									<Heading as="h3" variant="heading-strong-s">
+										Channel Tools
+									</Heading>
+								</Row>
+								<Column gap="8">
+									<Text variant="body-default-s" onBackground="neutral-weak">
+										<strong>Manage Channels:</strong> Create and organize
+									</Text>
+									<Text variant="body-default-s" onBackground="neutral-weak">
+										<strong>Move Members:</strong> Voice management
+									</Text>
+									<Text variant="body-default-s" onBackground="neutral-weak">
+										<strong>View All Channels:</strong> Full server access
+									</Text>
+								</Column>
+							</Column>
+						</Row>
+
+						<Column horizontal="center" gap="12" paddingTop="16">
+							<Badge
+								background="accent-alpha-weak"
+								onBackground="accent-strong"
+								paddingX="12"
+								paddingY="4"
+							>
+								✨ You can limit permissions in Discord server settings if needed
+							</Badge>
+						</Column>
+					</Column>
+				</RevealFx>
+			</div>
+
 			<div id="features">
 				<Projects range={[1]} />
 			</div>

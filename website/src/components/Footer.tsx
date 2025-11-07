@@ -23,7 +23,12 @@ export const Footer = () => {
       >
         <Text variant="body-default-s" onBackground="neutral-strong">
           <Text onBackground="neutral-weak">© {currentYear} Balu Bot /</Text>
-          <Text paddingX="4">Developed by{" "}
+          <Text paddingX="4">
+            <SmartLink href="/privacy">Privacy Policy</SmartLink>
+            {" "}/{" "}
+            <SmartLink href="/terms">Terms of Service</SmartLink>
+            {" "}/{" "}
+            Developed by{" "}
             <SmartLink href="https://mahadi.dev" target="_blank">Mahadi Hasan</SmartLink>
           </Text>
         </Text>

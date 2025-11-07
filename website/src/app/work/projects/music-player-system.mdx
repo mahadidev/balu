@@ -36,7 +36,6 @@ Balu's music player brings professional-grade audio streaming directly to your D
 ### Basic Playback
 - `!play <song/url>` - Play music from YouTube
 - `!play <song/url> --related` - Play song and add related songs to queue
-- `!play_related <song/url>` - Play music with automatic related songs (no flag needed)
 - `!pause` - Pause current song
 - `!resume` - Resume playback
 - `!skip` - Skip to next song
@@ -56,7 +55,6 @@ Balu's music player brings professional-grade audio streaming directly to your D
 ### Slash Commands
 - `/play` - Interactive play command with autocomplete
 - `/play <song> --related` - Interactive play with smart related songs
-- `/play_related` - Play music with automatic related songs (dedicated command)
 
 ## 🎯 Smart Related Songs Feature
 
@@ -71,8 +69,8 @@ The `--related` feature uses intelligent keyword matching to automatically find 
 ### Usage Examples
 ```
 !play "Shape of You" --related      → Adds popular pop hits
-!play_related "Bohemian Rhapsody"   → Adds classic rock songs (no flag needed)
-/play_related Tum Hi Ho             → Adds Bollywood favorites (slash command)
+!play "Bohemian Rhapsody" --related → Adds classic rock songs
+/play Tum Hi Ho --related           → Adds Bollywood favorites (slash command)
 !play "Lose Yourself" --related     → Adds hip-hop classics
 ```
 
@@ -85,13 +83,13 @@ The `--related` feature uses intelligent keyword matching to automatically find 
 - **Bollywood**: Popular Hindi film songs
 - **Year-Specific**: Songs from detected time periods (2018, 2020, etc.)
 
-### 🚀 Quick Commands
-For convenience, we've added dedicated commands that automatically include related songs:
+### 🚀 Using Related Songs
+To use the related songs feature, simply add `--related` to your play command:
 
-- `!play_related <song>` - No need to remember flags, just play with related songs
-- `/play_related` - Slash command version for easy Discord integration
+- `!play <song> --related` - Plays the song and automatically adds similar music to queue
+- `/play <song> --related` - Slash command version with related songs
 
-Both commands work exactly like `!play --related` but are simpler to use!
+The `--related` flag works with any song name, artist, or YouTube URL!
 
 ## Interactive Music Interface
 
@@ -125,5 +123,23 @@ Built with modern Python and discord.py, featuring enterprise-level architecture
 - Bot needs "Connect" and "Speak" permissions in voice channels
 - Users must be in a voice channel to start playback
 - Administrator permissions recommended for full functionality
+
+## Privacy & Permissions
+
+Balu respects your privacy and only collects essential data for bot functionality:
+
+- **What we collect**: Discord User IDs, Server IDs, Voice Channel data, Command usage
+- **What we DON'T collect**: Message content, personal conversations, voice recordings
+- **Data storage**: Local storage only, automatically cleared on restart
+- **Your rights**: Full data deletion when bot is removed from server
+
+**Why Administrator permissions?**
+- **Music Features**: Connect to any voice channel, stream audio, detect playback status
+- **Chat Management**: Send responses, display rich embeds, manage bot messages  
+- **Channel Tools**: Create/organize channels, move users between voice channels
+
+You can limit these permissions in Discord server settings if you only need specific features.
+
+For full details, see our [Privacy Policy](/privacy) and [Terms of Service](/terms).
 
 Perfect for music lovers, gaming sessions, study groups, and community events!
