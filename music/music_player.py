@@ -20,7 +20,7 @@ class MusicPlayer:
         self.url_cache = {}
         self.song_history = {}  # Track previous songs for each guild
         
-        # ULTRA FAST yt-dlp options
+        # ULTRA FAST yt-dlp options - back to working configuration
         self.ytdl_fast_options = {
             'format': 'bestaudio/best',
             'quiet': True,
@@ -166,7 +166,7 @@ class MusicPlayer:
             print(f"Error getting audio URL: {e}")
             return None, None
 
-    async def play(self, ctx, query):
+    async def play(self, ctx, query, related=False):
         """BULLETPROOF play - always play something"""
         # Ensure user is in voice channel
         if not ctx.author.voice:
@@ -185,7 +185,7 @@ class MusicPlayer:
         if is_playlist_with_video:
             await self.handle_playlist_url(ctx, query, voice_client)
         else:
-            await self.handle_single_song(ctx, query, voice_client)
+            await self.handle_single_song(ctx, query, voice_client, related=related)
 
     async def handle_playlist_url(self, ctx, playlist_url, voice_client):
         """Handle playlist URLs by extracting the single video first"""
@@ -250,6 +250,154 @@ class MusicPlayer:
         except:
             return None
 
+    def generate_smart_related_songs(self, title, query):
+        """Generate related song suggestions using smart keyword matching"""
+        related_songs = []
+        
+        # Analyze the song to determine genre/style
+        title_lower = title.lower()
+        query_lower = query.lower()
+        
+        # Extract year if present
+        import re
+        year_match = re.search(r'20\d{2}', title)
+        year = year_match.group() if year_match else "2024"
+        
+        # Language/Region detection
+        if any(word in title_lower for word in ['bangla', 'bengali', 'bangladesh']):
+            related_songs.extend([
+                "Amar Shonar Bangla",
+                "Ekla Cholo Re",
+                "Chol Rabi Chole Jabo",
+                "Ami Banglay Gaan Gai",
+                "Diner Sheshe Ghumer Deshe",
+                "Tomar Khola Hawa"
+            ])
+        
+        elif any(word in title_lower for word in ['hindi', 'bollywood', 'bhangra']):
+            related_songs.extend([
+                "Tum Hi Ho",
+                "Kal Ho Naa Ho",
+                "Gerua",
+                "Dil Diyan Gallan",
+                "Raabta",
+                "Hawayein"
+            ])
+            
+        # Genre detection
+        elif any(word in title_lower for word in ['rock', 'metal', 'guitar']):
+            related_songs.extend([
+                "Bohemian Rhapsody Queen",
+                "Sweet Child O Mine",
+                "Hotel California",
+                "Stairway to Heaven",
+                "Don't Stop Believin",
+                "We Will Rock You"
+            ])
+            
+        elif any(word in title_lower for word in ['pop', 'dance', 'party']):
+            related_songs.extend([
+                f"Shape of You Ed Sheeran",
+                f"Blinding Lights The Weeknd",
+                f"As It Was Harry Styles",
+                f"Anti Hero Taylor Swift",
+                f"Flowers Miley Cyrus",
+                f"Good 4 U Olivia Rodrigo"
+            ])
+            
+        elif any(word in title_lower for word in ['rap', 'hip hop', 'drake', 'eminem']):
+            related_songs.extend([
+                "God's Plan Drake",
+                "Lose Yourself Eminem",
+                "HUMBLE Kendrick Lamar",
+                "Sicko Mode Travis Scott",
+                "Old Town Road Lil Nas X",
+                "Industry Baby Lil Nas X"
+            ])
+            
+        elif any(word in title_lower for word in ['love', 'romantic', 'heart']):
+            related_songs.extend([
+                "Perfect Ed Sheeran",
+                "All of Me John Legend",
+                "Thinking Out Loud Ed Sheeran",
+                "A Thousand Years Christina Perri",
+                "Make You Feel My Love",
+                "Can't Help Myself"
+            ])
+            
+        # Default popular songs if no specific genre detected
+        if not related_songs:
+            related_songs.extend([
+                f"Heat Waves Glass Animals",
+                f"Stay The Kid LAROI",
+                f"Levitating Dua Lipa",
+                f"Good as Hell Lizzo",
+                f"Watermelon Sugar Harry Styles",
+                f"drivers license Olivia Rodrigo",
+                f"Bad Habits Ed Sheeran",
+                f"Peaches Justin Bieber"
+            ])
+        
+        # Add year-specific hits if year detected
+        if year and year != "2024":
+            related_songs.append(f"best songs {year}")
+            related_songs.append(f"top hits {year}")
+        
+        return related_songs[:8]  # Return max 8 suggestions
+
+    async def load_related_songs(self, ctx, original_query, original_title):
+        """Load related songs using smart keyword matching - FAST VERSION"""
+        try:
+            guild_id = ctx.guild.id
+            loaded_count = 0
+            
+            # Smart keyword matching based on song characteristics
+            related_songs = self.generate_smart_related_songs(original_title, original_query)
+            
+            # Search for multiple songs in one batch query for speed
+            batch_search = " ".join(related_songs[:4])  # Combine first 4 songs
+            search_query = f"ytsearch4:{batch_search}"
+            
+            loop = asyncio.get_event_loop()
+            info = await asyncio.wait_for(
+                loop.run_in_executor(None, lambda: self.ytdl_fast.extract_info(search_query, download=False)),
+                timeout=5.0  # Shorter timeout
+            )
+            
+            if info and 'entries' in info and info['entries']:
+                for entry in info['entries'][:4]:  # Take first 4 results
+                    if not entry:
+                        continue
+                        
+                    try:
+                        # Add song to queue quickly
+                        song_info = {
+                            'title': entry.get('title', 'Unknown Title'),
+                            'duration': entry.get('duration_string', 'Unknown'),
+                            'duration_seconds': entry.get('duration', 0),
+                            'thumbnail': entry.get('thumbnail'),
+                            'author': entry.get('uploader', 'Unknown Artist'),
+                            'webpage_url': f"https://www.youtube.com/watch?v={entry['id']}",
+                            'url': None,  # Will be resolved when playing
+                            'video_id': entry['id'],
+                            'requested_by': ctx.author.name
+                        }
+                        
+                        self.add_to_queue(guild_id, song_info)
+                        loaded_count += 1
+                        
+                    except Exception:
+                        continue
+            
+            if loaded_count > 0:
+                await ctx.send(f'✅ **Found {loaded_count} related songs and added them to queue!**')
+            else:
+                await ctx.send('⚠️ **Could not find related songs at the moment. Try manually adding songs!**')
+                
+        except Exception as e:
+            print(f"Error loading related songs: {e}")
+            await ctx.send('⚠️ **Had trouble finding related songs, but your song is playing!**')
+
     async def try_load_playlist_songs(self, ctx, playlist_url):
         """Try to load playlist songs in background (silent failure)"""
         try:
@@ -307,17 +455,17 @@ class MusicPlayer:
                                 
                                 await asyncio.sleep(0.1)  # Small delay
                                 
-                        except Exception as e:
+                        except Exception:
                             continue
                     
                     if loaded_count > 0:
                         await ctx.send(f'✅ **Added {loaded_count} more songs from YouTube Radio**')
                         
-        except Exception as e:
+        except Exception:
             # Silent failure - we already have the first song playing
             pass
 
-    async def handle_single_song(self, ctx, query, voice_client):
+    async def handle_single_song(self, ctx, query, voice_client, related=False):
         """Handle single song playback"""
         search_msg = await ctx.send('⚡ **Getting song...**')
         
@@ -347,8 +495,17 @@ class MusicPlayer:
             if not voice_client.is_playing():
                 await search_msg.delete()
                 await self.play_instant(ctx, song_info)
+                
+                # If --related flag is used, load similar songs in background
+                if related:
+                    await ctx.send(f'🎵 **Now Playing:** {title}\n🔍 **Finding related songs...**')
+                    asyncio.create_task(self.load_related_songs(ctx, query, title))
             else:
                 await search_msg.edit(content=f'✅ **Added to queue:** {title}')
+                
+                # If --related flag is used, load similar songs in background
+                if related:
+                    asyncio.create_task(self.load_related_songs(ctx, query, title))
                 
         except Exception as e:
             print(f"Play error: {e}")
@@ -378,6 +535,16 @@ class MusicPlayer:
         current_song = self.queues[guild_id][0]
         
         try:
+            # If no URL is stored, extract it now
+            if not current_song.get('url'):
+                if current_song.get('video_id'):
+                    video_url = f"https://www.youtube.com/watch?v={current_song['video_id']}"
+                    audio_url, title = await self.get_audio_url_ultra_fast(video_url)
+                    current_song['url'] = audio_url
+                elif current_song.get('webpage_url'):
+                    audio_url, title = await self.get_audio_url_ultra_fast(current_song['webpage_url'])
+                    current_song['url'] = audio_url
+            
             # Use the URL for ULTRA FAST playback
             source = PCMVolumeTransformer(
                 FFmpegPCMAudio(current_song['url'], **self.ffmpeg_options),
@@ -574,12 +741,6 @@ class MusicPlayer:
             self.queues[guild_id].insert(random_index, song_info)
         else:
             self.queues[guild_id].append(song_info)
-
-    # ... (keep all the other methods the same)
-
-# Keep the same MusicControlView class as before
-
-    # ... (keep all the other methods the same: skip, stop, pause, resume, change_volume, show_queue, etc.)
 
     async def skip(self, ctx):
         """Skip current song"""

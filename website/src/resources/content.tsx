@@ -6,8 +6,8 @@ const person: Person = {
   lastName: "",
   name: `Balu`,
   role: "Discord Bot",
-  avatar: "/images/avatar.jpg",
-  email: "balu@discord.com",
+  avatar: "/images/logo.png",
+  email: "mahadi.dev.pm@gmail.com",
   location: "UTC", // Expecting the IANA time zone identifier, e.g., 'Europe/Vienna'
   languages: ["English"], // optional: Leave the array empty if you don't want to display languages
 };
@@ -22,14 +22,14 @@ const social: Social = [
   // Links are automatically displayed.
   // Import new icons in /once-ui/icons.ts
   {
-    name: "GitHub",
-    icon: "github",
-    link: "https://github.com/mahadihasan/balu-bot",
-  },
-  {
     name: "Discord",
     icon: "discord",
-    link: "https://discord.gg/balu-bot",
+    link: "https://discord.gg/wy7Gzv68",
+  },
+  {
+    name: "Facebook",
+    icon: "facebook",
+    link: "https://www.facebook.com/baluBot322",
   },
   {
     name: "Support",
@@ -40,7 +40,7 @@ const social: Social = [
 
 const home: Home = {
 	path: '/',
-	image: '/images/og/home.jpg',
+	image: '/images/og/opengraph-image.png',
 	label: 'Home',
 	title: `${person.name} - Discord Bot`,
 	description: `Advanced Discord bot with music, chat, and voice management features`,
@@ -67,8 +67,8 @@ const home: Home = {
 	subline: (
 		<>
 			Meet Balu, your powerful Discord companion that brings advanced
-			<br /> music streaming, cross server chat rooms, and voice management to your
-			server.
+			<br /> music streaming, cross server chat rooms, and voice management to
+			your server.
 		</>
 	),
 };
@@ -119,6 +119,11 @@ const about: About = {
 						Interactive music interface with play/pause, skip, volume control,
 						and real-time progress tracking for the ultimate listening
 						experience.
+					</>,
+					<>
+						Smart Related Songs feature with intelligent genre detection - use
+						--related to automatically find and queue similar music based on
+						language, genre, and era.
 					</>,
 				],
 				images: [],

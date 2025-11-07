@@ -28,12 +28,15 @@ Balu's music player brings professional-grade audio streaming directly to your D
 ### 🔄 **Advanced Playback Options**
 - **Repeat Modes**: Off, Track, Queue
 - **Shuffle Mode**: Randomize your playlist
+- **Smart Related Songs**: Automatically find similar music with `--related`
 - **Interactive Interface**: Real-time progress tracking
 
 ## Commands
 
 ### Basic Playback
 - `!play <song/url>` - Play music from YouTube
+- `!play <song/url> --related` - Play song and add related songs to queue
+- `!play_related <song/url>` - Play music with automatic related songs (no flag needed)
 - `!pause` - Pause current song
 - `!resume` - Resume playback
 - `!skip` - Skip to next song
@@ -52,6 +55,43 @@ Balu's music player brings professional-grade audio streaming directly to your D
 
 ### Slash Commands
 - `/play` - Interactive play command with autocomplete
+- `/play <song> --related` - Interactive play with smart related songs
+- `/play_related` - Play music with automatic related songs (dedicated command)
+
+## 🎯 Smart Related Songs Feature
+
+The `--related` feature uses intelligent keyword matching to automatically find and queue songs similar to what you're playing:
+
+### How It Works
+- **Language Detection**: Automatically recognizes Bangla, Hindi, English, and other languages
+- **Genre Recognition**: Identifies rock, pop, rap, romantic, and other music styles
+- **Era Matching**: Detects years in song titles for time-period specific recommendations
+- **Smart Fallbacks**: Uses current popular hits when no specific genre is detected
+
+### Usage Examples
+```
+!play "Shape of You" --related      → Adds popular pop hits
+!play_related "Bohemian Rhapsody"   → Adds classic rock songs (no flag needed)
+/play_related Tum Hi Ho             → Adds Bollywood favorites (slash command)
+!play "Lose Yourself" --related     → Adds hip-hop classics
+```
+
+### Categories Supported
+- **Pop Music**: Modern hits like "Blinding Lights", "As It Was"
+- **Rock/Metal**: Classics like "Hotel California", "Sweet Child O Mine"
+- **Hip Hop**: Hits like "God's Plan", "HUMBLE"
+- **Romantic**: Love songs like "Perfect", "All of Me"
+- **Bangla**: Traditional and modern Bengali music
+- **Bollywood**: Popular Hindi film songs
+- **Year-Specific**: Songs from detected time periods (2018, 2020, etc.)
+
+### 🚀 Quick Commands
+For convenience, we've added dedicated commands that automatically include related songs:
+
+- `!play_related <song>` - No need to remember flags, just play with related songs
+- `/play_related` - Slash command version for easy Discord integration
+
+Both commands work exactly like `!play --related` but are simpler to use!
 
 ## Interactive Music Interface
 

@@ -14,7 +14,7 @@ import {
 import { home } from "./index";
 
 // IMPORTANT: Replace with your own domain address - it's used for SEO in meta tags and schema
-const baseURL: string = "https://demo.magic-portfolio.com";
+const baseURL: string = 'https://balubot.vercel.app';
 
 const routes: RoutesConfig = {
   "/": true,
@@ -37,8 +37,7 @@ const protectedRoutes: ProtectedRoutesConfig = {
 };
 
 // Import and set font for each variant
-import { Geist } from "next/font/google";
-import { Geist_Mono } from "next/font/google";
+import { Geist, Geist_Mono } from "next/font/google";
 
 const heading = Geist({
   variable: "--font-heading",
@@ -217,16 +216,6 @@ const socialSharing: SocialSharingConfig = {
 };
 
 export {
-  display,
-  mailchimp,
-  routes,
-  protectedRoutes,
-  baseURL,
-  fonts,
-  style,
-  schema,
-  sameAs,
-  socialSharing,
-  effects,
-  dataStyle,
+  baseURL, dataStyle, display, effects, fonts, mailchimp, protectedRoutes, routes, sameAs, schema, socialSharing, style
 };
+

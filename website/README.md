@@ -2,7 +2,7 @@
 
 Magic Portfolio is a simple, clean, beginner-friendly portfolio template. It supports an MDX-based content system for projects and blog posts, an about / CV page and a gallery.
 
-View the demo [here](https://demo.magic-portfolio.com).
+View the demo [here](https://balubot.vercel.app).
 
 ![Magic Portfolio](public/images/og/home.jpg)
 
