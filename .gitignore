@@ -83,3 +83,4 @@ website
 # Temporary files
 *.tmp
 *.temp
+.venv
