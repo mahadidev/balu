@@ -3,28 +3,28 @@ import React, { ReactNode } from "react";
 import { slugify as transliterate } from "transliteration";
 
 import {
-  Heading,
-  HeadingLink,
-  Text,
-  InlineCode,
-  CodeBlock,
-  TextProps,
-  MediaProps,
   Accordion,
   AccordionGroup,
-  Table,
-  Feedback,
   Button,
   Card,
-  Grid,
-  Row,
+  CodeBlock,
   Column,
+  Feedback,
+  Grid,
+  Heading,
+  HeadingLink,
   Icon,
-  Media,
-  SmartLink,
+  InlineCode,
+  Line,
   List,
   ListItem,
-  Line,
+  Media,
+  MediaProps,
+  Row,
+  SmartLink,
+  Table,
+  Text,
+  TextProps,
 } from "@once-ui-system/core";
 
 type CustomLinkProps = React.AnchorHTMLAttributes<HTMLAnchorElement> & {
@@ -63,21 +63,30 @@ function createImage({ alt, src, ...props }: MediaProps & { src: string }) {
   }
 
   return (
-    <Media
-      marginTop="8"
-      marginBottom="16"
-      enlarge
-      radius="m"
-      border="neutral-alpha-medium"
-      sizes="(max-width: 960px) 100vw, 960px"
-      alt={alt}
-      src={src}
-      {...props}
-    />
-  );
+		<Card
+			fillWidth
+			radius="l-4"
+			padding="s"
+			direction="column"
+			border="neutral-alpha-medium"
+		>
+			<Media
+				marginTop="8"
+				marginBottom="16"
+				enlarge
+				radius="m"
+				border="neutral-alpha-medium"
+				sizes="(max-width: 960px) 100vw, 960px"
+				alt={alt}
+				src={src}
+				{...props}
+			/>
+		</Card>
+	);
 }
 
 function slugify(str: string): string {
+  if (!str || typeof str !== 'string') return '';
   const strWithAnd = str.replace(/&/g, " and "); // Replace & with 'and'
   return transliterate(strWithAnd, {
     lowercase: true,

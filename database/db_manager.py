@@ -2,6 +2,7 @@ import sqlite3
 import os
 from datetime import datetime
 import pytz
+import difflib
 
 class DatabaseManager:
     def __init__(self, db_path="bot_database.db"):
@@ -94,13 +95,25 @@ class DatabaseManager:
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
             
+            # Normalize room name: strip extra spaces but preserve intentional spaces
+            normalized_name = ' '.join(room_name.strip().split())
+            
+            # Check if normalized room name already exists
+            cursor.execute('''
+                SELECT room_name FROM global_chat_rooms 
+                WHERE LOWER(TRIM(room_name)) = LOWER(?)
+            ''', (normalized_name,))
+            
+            if cursor.fetchone():
+                return False  # Room already exists
+            
             dhaka_time = datetime.now(self.timezone).strftime('%Y-%m-%d %H:%M:%S')
             
             try:
                 cursor.execute('''
                     INSERT INTO global_chat_rooms (room_name, created_by, created_at, max_servers)
                     VALUES (?, ?, ?, ?)
-                ''', (room_name, created_by, dhaka_time, max_servers))
+                ''', (normalized_name, created_by, dhaka_time, max_servers))
                 return True
             except sqlite3.IntegrityError:
                 return False
@@ -131,6 +144,90 @@ class DatabaseManager:
                 })
             
             return rooms
+    
+    def find_closest_room(self, input_room_name):
+        """Find the closest matching room name using enhanced fuzzy matching"""
+        rooms = self.get_chat_rooms()
+        if not rooms:
+            return None
+        
+        room_names = [room['room_name'] for room in rooms]
+        # Normalize input: strip extra spaces and convert to lowercase
+        input_lower = ' '.join(input_room_name.lower().strip().split())
+        
+        # First try exact match (case insensitive, normalized spaces)
+        for room_name in room_names:
+            room_normalized = ' '.join(room_name.lower().strip().split())
+            if room_normalized == input_lower:
+                return room_name
+        
+        # Try partial word matching (e.g., "pubg comm" matches "pubg community")
+        best_match = None
+        best_score = 0
+        
+        for room_name in room_names:
+            # Normalize room name: handle spaces, dashes, underscores
+            room_normalized = ' '.join(room_name.lower().strip().split())
+            
+            # Check if input words are contained in room name
+            input_words = input_lower.split()
+            room_words = room_normalized.replace('-', ' ').replace('_', ' ').split()
+            
+            # Calculate word-based similarity
+            word_matches = 0
+            total_input_chars = len(input_lower.replace(' ', ''))
+            matched_chars = 0
+            
+            for input_word in input_words:
+                best_match_score = 0
+                for room_word in room_words:
+                    # Check for exact word match
+                    if input_word == room_word:
+                        best_match_score = 1.0
+                        break  # Perfect match, no need to check others
+                    # Check if input word is start of room word (abbreviation)
+                    elif room_word.startswith(input_word) and len(input_word) >= 2:
+                        best_match_score = max(best_match_score, 0.8)
+                    # Check if room word contains input word
+                    elif input_word in room_word and len(input_word) >= 3:
+                        best_match_score = max(best_match_score, 0.6)
+                    # Check for fuzzy word similarity (for typos like "community" vs "comminity")
+                    elif len(input_word) >= 4 and len(room_word) >= 4:
+                        word_similarity = difflib.SequenceMatcher(None, input_word, room_word).ratio()
+                        if word_similarity >= 0.8:  # 80% similarity for individual words
+                            best_match_score = max(best_match_score, word_similarity * 0.9)
+                
+                # Add the best score for this input word
+                word_matches += best_match_score
+                if best_match_score > 0:
+                    matched_chars += len(input_word)
+            
+            # Calculate combined score
+            word_score = word_matches / len(input_words) if input_words else 0
+            char_score = matched_chars / total_input_chars if total_input_chars > 0 else 0
+            combined_score = (word_score * 0.7) + (char_score * 0.3)
+            
+            if combined_score > best_score and combined_score >= 0.5:  # 50% threshold for partial matching
+                best_score = combined_score
+                best_match = room_name
+        
+        if best_match:
+            return best_match
+        
+        # Fallback to traditional fuzzy matching
+        closest_matches = difflib.get_close_matches(
+            input_lower, 
+            [name.lower() for name in room_names], 
+            n=1, 
+            cutoff=0.6
+        )
+        
+        if closest_matches:
+            for room_name in room_names:
+                if room_name.lower() == closest_matches[0]:
+                    return room_name
+        
+        return None
     
     def register_global_chat_channel(self, guild_id, channel_id, room_name, guild_name=None, channel_name=None, registered_by=None):
         """Register a channel for global chat room"""

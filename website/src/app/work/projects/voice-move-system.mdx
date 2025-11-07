@@ -1,7 +1,7 @@
 ---
 title: "🎤 Smart Voice Movement System"
 publishedAt: "2024-11-03"
-summary: "Effortlessly move users between voice channels with intelligent channel detection, bulk operations, and interactive slash commands."
+summary: "Production-ready voice channel management with bulk user operations, intelligent permission handling, and modern slash command interface."
 images:
   - "/images/slides/move_slide_1.png"
 ---
@@ -72,17 +72,25 @@ Currently in: General Voice (5 members)
 
 ## Technical Implementation
 
-### Advanced Error Handling
-- Connection state monitoring
-- Graceful permission failure management
-- Channel availability verification
-- User-friendly error messages
+### Production Architecture
+- **VoiceManager Class**: Centralized voice state management and operations
+- **Async Processing**: Non-blocking user movement with batch operations
+- **Permission Validation**: Real-time permission checking before operations
+- **State Monitoring**: Connection state tracking and automatic recovery
+- **Error Recovery**: Intelligent retry logic for temporary Discord API failures
 
-### Performance Optimized
-- Batch user movement operations
-- Minimal API calls to prevent rate limiting
-- Asynchronous processing for responsiveness
-- Smart retry logic for temporary failures
+### Advanced Error Handling
+- **Connection State Monitoring**: Real-time voice connection status tracking
+- **Graceful Permission Management**: Clear feedback for insufficient permissions
+- **Channel Availability Verification**: Pre-validation of target channels
+- **User-Friendly Messaging**: Detailed success/failure notifications
+- **Rate Limit Handling**: Automatic backoff and retry for API limits
+
+### Performance Optimization
+- **Batch Operations**: Efficient bulk user movement to minimize API calls
+- **Asynchronous Processing**: Non-blocking operations for server responsiveness
+- **Smart Caching**: Channel and permission state caching for speed
+- **Resource Management**: Automatic cleanup and connection management
 
 ## Use Cases
 

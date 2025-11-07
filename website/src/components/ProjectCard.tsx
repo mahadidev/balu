@@ -1,14 +1,15 @@
 "use client";
 
 import {
-  AvatarGroup,
-  Carousel,
-  Column,
-  Flex,
-  Heading,
-  Mask,
-  SmartLink,
-  Text,
+	AvatarGroup,
+	Card,
+	Carousel,
+	Column,
+	Flex,
+	Heading,
+	Mask,
+	SmartLink,
+	Text,
 } from "@once-ui-system/core";
 
 interface ProjectCardProps {
@@ -33,6 +34,7 @@ export const ProjectCard: React.FC<ProjectCardProps> = ({
 }) => {
   return (
 		<Column fillWidth gap="m">
+			<Card fillWidth radius="l-4" padding="s" direction="column" border="neutral-alpha-medium">
 				<Carousel
 					sizes="(max-width: 960px) 100vw, 960px"
 					items={images.map((image) => ({
@@ -45,6 +47,7 @@ export const ProjectCard: React.FC<ProjectCardProps> = ({
 						controls: true,
 					}}
 				/>
+			</Card>
 			<Flex
 				s={{ direction: 'column' }}
 				fillWidth

@@ -1,13 +1,13 @@
 "use client";
 
-import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 
 import { Fade, Flex, Line, Row, ToggleButton } from "@once-ui-system/core";
 
-import { routes, display, person, about, blog, work, gallery } from "@/resources";
-import { ThemeToggle } from "./ThemeToggle";
+import { display, person } from "@/resources";
 import styles from "./Header.module.scss";
+import { ThemeToggle } from "./ThemeToggle";
 
 type TimeDisplayProps = {
   timeZone: string;
@@ -43,7 +43,61 @@ const TimeDisplay: React.FC<TimeDisplayProps> = ({ timeZone, locale = "en-GB" })
 export default TimeDisplay;
 
 export const Header = () => {
-  const pathname = usePathname() ?? "";
+  const pathname = usePathname();
+  const [activeSection, setActiveSection] = useState("home");
+  const isHomePage = pathname === "/";
+
+  const scrollToSection = (sectionId: string) => {
+    if (!isHomePage) {
+      // Navigate to home page with hash
+      window.location.href = `/#${sectionId}`;
+      return;
+    }
+    
+    const element = document.getElementById(sectionId);
+    if (element) {
+      const elementPosition = element.offsetTop;
+      const offsetPosition = elementPosition - 0; // 120px offset from top
+      
+      window.scrollTo({
+        top: offsetPosition,
+        behavior: "smooth"
+      });
+      setActiveSection(sectionId);
+    }
+  };
+
+  useEffect(() => {
+    // Reset active section when not on home page
+    if (!isHomePage) {
+      setActiveSection("");
+      return;
+    }
+
+    const handleScroll = () => {
+      const sections = ["home", "commands", "features", "newsletter"];
+      const scrollPosition = window.scrollY + 200; // Offset for header
+
+      for (let i = sections.length - 1; i >= 0; i--) {
+        const section = document.getElementById(sections[i]);
+        if (section) {
+          // Check if at bottom of page
+          if(window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 10){
+            setActiveSection(sections[sections.length - 1]);
+            return; // Exit the function early to prevent override
+          }
+          if (section.offsetTop <= scrollPosition) {
+            setActiveSection(sections[i]);
+            break;
+          }
+        }
+      }
+    };
+
+    window.addEventListener('scroll', handleScroll);
+    handleScroll(); // Call once to set initial state
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, [isHomePage]);
 
   return (
     <>
@@ -86,86 +140,57 @@ export const Header = () => {
             zIndex={1}
           >
             <Row gap="4" vertical="center" textVariant="body-default-s" suppressHydrationWarning>
-              {routes["/"] && (
-                <ToggleButton prefixIcon="home" href="/" selected={pathname === "/"} />
-              )}
+              <ToggleButton 
+                prefixIcon="home" 
+                onClick={() => scrollToSection("home")}
+                selected={activeSection === "home"} 
+              />
               <Line background="neutral-alpha-medium" vert maxHeight="24" />
-              {routes["/about"] && (
-                <>
-                  <Row s={{ hide: true }}>
-                    <ToggleButton
-                      prefixIcon="person"
-                      href="/about"
-                      label={about.label}
-                      selected={pathname === "/about"}
-                    />
-                  </Row>
-                  <Row hide s={{ hide: false }}>
-                    <ToggleButton
-                      prefixIcon="person"
-                      href="/about"
-                      selected={pathname === "/about"}
-                    />
-                  </Row>
-                </>
-              )}
-              {routes["/work"] && (
-                <>
-                  <Row s={{ hide: true }}>
-                    <ToggleButton
-                      prefixIcon="grid"
-                      href="/work"
-                      label={work.label}
-                      selected={pathname.startsWith("/work")}
-                    />
-                  </Row>
-                  <Row hide s={{ hide: false }}>
-                    <ToggleButton
-                      prefixIcon="grid"
-                      href="/work"
-                      selected={pathname.startsWith("/work")}
-                    />
-                  </Row>
-                </>
-              )}
-              {routes["/blog"] && (
-                <>
-                  <Row s={{ hide: true }}>
-                    <ToggleButton
-                      prefixIcon="book"
-                      href="/blog"
-                      label={blog.label}
-                      selected={pathname.startsWith("/blog")}
-                    />
-                  </Row>
-                  <Row hide s={{ hide: false }}>
-                    <ToggleButton
-                      prefixIcon="book"
-                      href="/blog"
-                      selected={pathname.startsWith("/blog")}
-                    />
-                  </Row>
-                </>
-              )}
-              {routes["/gallery"] && (
-                <>
-                  <Row s={{ hide: true }}>
-                    <ToggleButton
-                      prefixIcon="gallery"
-                      href="/gallery"
-                      label={gallery.label}
-                      selected={pathname.startsWith("/gallery")}
-                    />
-                  </Row>
-                  <Row hide s={{ hide: false }}>
-                    <ToggleButton
-                      prefixIcon="gallery"
-                      href="/gallery"
-                      selected={pathname.startsWith("/gallery")}
-                    />
-                  </Row>
-                </>
-              )}
+              <Row s={{ hide: true }}>
+                <ToggleButton
+                  prefixIcon="terminal"
+                  onClick={() => scrollToSection("commands")}
+                  label="Commands"
+                  selected={activeSection === "commands"}
+                />
+              </Row>
+              <Row hide s={{ hide: false }}>
+                <ToggleButton
+                  prefixIcon="terminal"
+                  onClick={() => scrollToSection("commands")}
+                  selected={activeSection === "commands"}
+                />
+              </Row>
+              <Row s={{ hide: true }}>
+                <ToggleButton
+                  prefixIcon="grid"
+                  onClick={() => scrollToSection("features")}
+                  label="Features"
+                  selected={activeSection === "features"}
+                />
+              </Row>
+              <Row hide s={{ hide: false }}>
+                <ToggleButton
+                  prefixIcon="grid"
+                  onClick={() => scrollToSection("features")}
+                  selected={activeSection === "features"}
+                />
+              </Row>
+              <Row s={{ hide: true }}>
+                <ToggleButton
+                  prefixIcon="mail"
+                  onClick={() => scrollToSection("newsletter")}
+                  label="Newsletter"
+                  selected={activeSection === "newsletter"}
+                />
+              </Row>
+              <Row hide s={{ hide: false }}>
+                <ToggleButton
+                  prefixIcon="mail"
+                  onClick={() => scrollToSection("newsletter")}
+                  selected={activeSection === "newsletter"}
+                />
+              </Row>
               {display.themeSwitcher && (
                 <>
                   <Line background="neutral-alpha-medium" vert maxHeight="24" />

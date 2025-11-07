@@ -11,7 +11,7 @@ from core_commands import setup_core_commands
 from music.commands import setup_music_commands
 from move.commands import setup_voice_commands
 from chat.commands import GlobalChatCommands
-from chat.category_commands import CategoryChatCommands
+from channel.commands import ChannelCommands
 
 # Load environment variables
 from dotenv import load_dotenv
@@ -32,25 +32,43 @@ db_manager = None
 @bot.event
 async def on_ready():
     global music_player, voice_manager, db_manager
+    print('🎯 Bot ready event triggered')
+    
+    print('🎵 Initializing music player...')
     music_player = MusicPlayer(bot)
+    
+    print('🎤 Initializing voice manager...')
     voice_manager = VoiceManager(bot)
+    
+    print('💾 Initializing database...')
     db_manager = DatabaseManager()
     
-    # Setup command modules
+    print('⚙️ Setting up command modules...')
     setup_core_commands(bot)
     setup_music_commands(bot, music_player)
     setup_voice_commands(bot, voice_manager)
     
-    # Add chat system cogs
+    print('💬 Adding chat system cog...')
     await bot.add_cog(GlobalChatCommands(bot))
-    await bot.add_cog(CategoryChatCommands(bot))
     
-    # Sync slash commands
+    print('📂 Adding channel management cog...')
     try:
-        synced = await bot.tree.sync()
+        await bot.add_cog(ChannelCommands(bot))
+        print('✅ Channel commands loaded successfully')
+    except Exception as e:
+        print(f'❌ Failed to load channel commands: {e}')
+        import traceback
+        traceback.print_exc()
+    
+    # Sync slash commands with timeout
+    try:
+        print('🔄 Syncing slash commands...')
+        synced = await asyncio.wait_for(bot.tree.sync(), timeout=30.0)
         print(f'✅ Synced {len(synced)} slash commands')
         for cmd in synced:
             print(f'  - /{cmd.name}: {cmd.description}')
+    except asyncio.TimeoutError:
+        print('⏰ Slash command sync timed out, continuing without sync...')
     except Exception as e:
         print(f'❌ Failed to sync commands: {e}')
     
@@ -74,11 +92,13 @@ async def on_error(event, *args, **kwargs):
 # Run the bot with retry logic
 async def run_bot_with_retry():
     """Run bot with automatic reconnection on failure"""
+    print('🔍 Checking for Discord token...')
     token = os.getenv('DISCORD_TOKEN')
     if not token:
         print('❌ No DISCORD_TOKEN found in .env file!')
         return
     
+    print('✅ Discord token found')
     retry_count = 0
     max_retries = 5
     
@@ -106,6 +126,11 @@ async def run_bot_with_retry():
 
 if __name__ == '__main__':
     try:
+        print('🚀 Starting bot main...')
         asyncio.run(run_bot_with_retry())
     except KeyboardInterrupt:
         print('👋 Bot stopped by user')
+    except Exception as e:
+        print(f'❌ Bot failed to start: {e}')
+        import traceback
+        traceback.print_exc()

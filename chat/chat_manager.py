@@ -149,28 +149,42 @@ class GlobalChatManager:
                 print(f"   ❌ Error sending message to {channel_info['guild_name']}: {e}")
     
     async def register_channel(self, guild: discord.Guild, channel: discord.TextChannel, room_name: str, registered_by: discord.Member) -> str:
-        """Register a channel for global chat room"""
+        """Register a channel for global chat room with fuzzy matching"""
         # Check if user has manage channels permission
         if not registered_by.guild_permissions.manage_channels:
             return "You need 'Manage Channels' permission to register for global chat."
         
+        # Try to find the closest matching room name
+        closest_room = self.db.find_closest_room(room_name)
+        
+        if not closest_room:
+            return self.get_room_not_found_message(room_name)
+        
+        # Use the closest matching room name
+        actual_room_name = closest_room
+        
         result = self.db.register_global_chat_channel(
             str(guild.id),
             str(channel.id),
-            room_name,
+            actual_room_name,
             guild.name,
             channel.name,
             str(registered_by.id)
         )
         
+        # Prepare response message
+        suggestion_msg = ""
+        if actual_room_name.lower() != room_name.lower():
+            suggestion_msg = f" (auto-matched from '{room_name}')"
+        
         if result == True:
-            return f"✅ Successfully registered {channel.mention} to room '{room_name}'!"
+            return f"✅ Successfully registered {channel.mention} to room **{actual_room_name}**{suggestion_msg}!"
         elif result == "updated":
-            return f"✅ Updated registration for {channel.mention} to room '{room_name}'!"
+            return f"✅ Updated registration for {channel.mention} to room **{actual_room_name}**{suggestion_msg}!"
         elif result == "room_not_found":
-            return f"❌ Room '{room_name}' does not exist. Create it first with `!globalchat createroom`."
+            return f"❌ Room '{actual_room_name}' does not exist. This shouldn't happen - please try again."
         else:
-            return f"❌ Failed to register {channel.mention} to room '{room_name}'."
+            return f"❌ Failed to register {channel.mention} to room '{actual_room_name}'."
     
     async def unregister_channel(self, guild: discord.Guild, channel: discord.TextChannel, requested_by: discord.Member) -> str:
         """Unregister a channel from global chat"""
@@ -192,4 +206,15 @@ class GlobalChatManager:
     def is_registered_channel(self, guild_id: str, channel_id: str) -> bool:
         """Check if a channel is registered for global chat"""
         return self.db.is_global_chat_channel(guild_id, channel_id)
+    
+    def get_room_not_found_message(self, room_name: str) -> str:
+        """Get formatted message when room is not found with available rooms list"""
+        available_rooms = self.db.get_chat_rooms()
+        if available_rooms:
+            room_list = ", ".join([f"**{room['room_name']}**" for room in available_rooms[:8]])  # Show max 8 rooms
+            if len(available_rooms) > 8:
+                room_list += f" and {len(available_rooms) - 8} more"
+            return f"❌ No room found matching '{room_name}'.\n\n**Available rooms:** {room_list}\n\nUse `!rooms` or `/rooms` to see all rooms or `!createRoom <name>` to create a new one."
+        else:
+            return f"❌ No rooms available. Create the first room with `!createRoom {room_name}`."
     

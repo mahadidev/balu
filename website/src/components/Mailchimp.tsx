@@ -17,6 +17,8 @@ export const Mailchimp: React.FC<React.ComponentProps<typeof Column>> = ({ ...fl
   const [email, setEmail] = useState<string>("");
   const [error, setError] = useState<string>("");
   const [touched, setTouched] = useState<boolean>(false);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isSubscribed, setIsSubscribed] = useState<boolean>(false);
 
   const validateEmail = (email: string): boolean => {
     if (email === "") {
@@ -47,7 +49,67 @@ export const Mailchimp: React.FC<React.ComponentProps<typeof Column>> = ({ ...fl
     }
   };
 
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!validateEmail(email) || email === "") {
+      setError("Please enter a valid email address.");
+      return;
+    }
+
+    setIsLoading(true);
+    setError("");
+
+    try {
+      const response = await fetch('/api/subscribe', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email }),
+      });
+
+      if (response.ok) {
+        setIsSubscribed(true);
+        setEmail("");
+      } else {
+        const data = await response.json();
+        setError(data.error || "Something went wrong. Please try again.");
+      }
+    } catch (error) {
+      setError("Network error. Please try again.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   if (newsletter.display === false) return null;
+
+  if (isSubscribed) {
+    return (
+      <Column
+        overflow="hidden"
+        fillWidth
+        padding="xl"
+        radius="l"
+        marginBottom="m"
+        horizontal="center"
+        align="center"
+        background="surface"
+        border="neutral-alpha-weak"
+        {...flex}
+      >
+        <Column maxWidth="xs" horizontal="center">
+          <Heading marginBottom="s" variant="display-strong-xs">
+            Thank you for subscribing!
+          </Heading>
+          <Text wrap="balance" marginBottom="l" variant="body-default-l" onBackground="neutral-weak">
+            You'll receive updates about new features and bot improvements.
+          </Text>
+        </Column>
+      </Column>
+    );
+  }
 
   return (
     <Column
@@ -118,8 +180,7 @@ export const Mailchimp: React.FC<React.ComponentProps<typeof Column>> = ({ ...fl
           display: "flex",
           justifyContent: "center",
         }}
-        action={mailchimp.action}
-        method="post"
+        onSubmit={handleSubmit}
         id="mc-embedded-subscribe-form"
         name="mc-embedded-subscribe-form"
       >
@@ -137,7 +198,9 @@ export const Mailchimp: React.FC<React.ComponentProps<typeof Column>> = ({ ...fl
             type="email"
             placeholder="Email"
             required
+            value={email}
             onChange={(e) => {
+              setEmail(e.target.value);
               if (error) {
                 handleChange(e);
               } else {
@@ -172,8 +235,15 @@ export const Mailchimp: React.FC<React.ComponentProps<typeof Column>> = ({ ...fl
           </div>
           <div className="clear">
             <Row height="48" vertical="center">
-              <Button id="mc-embedded-subscribe" value="Subscribe" size="m" fillWidth>
-                Subscribe
+              <Button 
+                id="mc-embedded-subscribe" 
+                type="submit" 
+                size="m" 
+                fillWidth
+                loading={isLoading}
+                disabled={isLoading || isSubscribed}
+              >
+                {isSubscribed ? "Subscribed!" : "Subscribe"}
               </Button>
             </Row>
           </div>
