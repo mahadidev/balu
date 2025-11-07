@@ -63,10 +63,25 @@ async def on_ready():
     # Sync slash commands with timeout
     try:
         print('🔄 Syncing slash commands...')
+        # Clear existing commands first, then sync
+        bot.tree.clear_commands(guild=None)
         synced = await asyncio.wait_for(bot.tree.sync(), timeout=30.0)
         print(f'✅ Synced {len(synced)} slash commands')
         for cmd in synced:
             print(f'  - /{cmd.name}: {cmd.description}')
+    except discord.HTTPException as e:
+        if e.status == 400 and "Entry Point command" in str(e):
+            print('⚠️ Entry Point command detected, attempting individual sync...')
+            try:
+                # Try syncing without clearing commands
+                synced = await asyncio.wait_for(bot.tree.sync(), timeout=30.0)
+                print(f'✅ Synced {len(synced)} slash commands')
+                for cmd in synced:
+                    print(f'  - /{cmd.name}: {cmd.description}')
+            except Exception as retry_e:
+                print(f'❌ Failed to sync commands on retry: {retry_e}')
+        else:
+            print(f'❌ Failed to sync commands: {e}')
     except asyncio.TimeoutError:
         print('⏰ Slash command sync timed out, continuing without sync...')
     except Exception as e:
