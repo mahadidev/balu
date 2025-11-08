@@ -42,12 +42,12 @@ class MusicPlayer:
             'rm_cache_dir': True,
             'extractor_args': {
                 'youtube': {
-                    'player_client': ['android_embedded', 'android'],
+                    'player_client': ['ios', 'android_music', 'android_embedded'],
                     'player_skip': ['configs', 'webpage']
                 }
             },
             'http_headers': {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                'User-Agent': 'com.google.ios.youtube/19.29.1 (iPhone16,2; U; CPU iOS 17_5_1 like Mac OS X;)',
                 'Accept': '*/*',
                 'Accept-Language': 'en-US,en;q=0.9',
                 'Accept-Encoding': 'gzip, deflate',
