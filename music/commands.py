@@ -149,7 +149,62 @@ def setup_music_commands(bot, music_player):
         ctx = SlashContext(interaction)
         await music_player.play(ctx, query, related=related)
 
+    @bot.command()
+    async def play_related(ctx, *, query):
+        """Play music and automatically add related songs"""
+        if not music_player:
+            await ctx.send('⚠️ Music system is still starting up. Please try again in a moment.')
+            return
+            
+        if not query:
+            await ctx.send('❌ Please provide a song name or YouTube URL!')
+            return
+        
+        # Always use related=True for this command
+        await music_player.play(ctx, query, related=True)
 
+    @bot.tree.command(name="play_related", description="Play music and automatically add related songs")
+    @app_commands.describe(query="Enter the song name, artist, or YouTube URL - related songs will be added automatically")
+    async def play_related_slash(interaction: discord.Interaction, query: str):
+        """Play music with automatic related songs using slash command"""
+        if not music_player:
+            await interaction.response.send_message('⚠️ Music system is still starting up. Please try again in a moment.', ephemeral=True)
+            return
+            
+        if not query:
+            await interaction.response.send_message('❌ Please provide a song name or YouTube URL!', ephemeral=True)
+            return
+        
+        # Defer the interaction immediately to prevent timeout
+        await interaction.response.defer()
+        
+        # Convert interaction to context-like object for compatibility with existing music_player
+        class SlashContext:
+            def __init__(self, interaction):
+                self.interaction = interaction
+                self.author = interaction.user
+                self.guild = interaction.guild
+                self.channel = interaction.channel
+                self.voice_client = discord.utils.get(interaction.client.voice_clients, guild=interaction.guild)
+                self._responded = True  # Already deferred
+                self._last_message = None
+            
+            async def send(self, content=None, **kwargs):
+                try:
+                    # Always use followup since we already deferred
+                    msg = await self.interaction.followup.send(content, **kwargs)
+                    self._last_message = msg
+                    return msg
+                except discord.errors.NotFound:
+                    # Interaction has expired, ignore silently
+                    pass
+                except Exception as e:
+                    print(f"Error sending slash command response: {e}")
+                    return None
+        
+        ctx = SlashContext(interaction)
+        # Always use related=True for this command
+        await music_player.play(ctx, query, related=True)
 
     @bot.command()
     async def repeat(ctx, mode=None):

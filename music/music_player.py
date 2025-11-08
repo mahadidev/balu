@@ -20,20 +20,20 @@ class MusicPlayer:
         self.url_cache = {}
         self.song_history = {}  # Track previous songs for each guild
         
-        # ULTRA FAST yt-dlp options - optimized for stability
+        # ULTRA FAST yt-dlp options - back to working configuration
         self.ytdl_fast_options = {
-            'format': 'bestaudio[ext=m4a]/bestaudio/best',
+            'format': 'bestaudio/best',
             'quiet': True,
             'no_warnings': True,
             'noplaylist': True,
             'extract_flat': False,
-            'socket_timeout': 10,
-            'retries': 2,
-            'fragment_retries': 2,
-            'extractor_retries': 2,
+            'socket_timeout': 5,
+            'retries': 1,
+            'fragment_retries': 1,
+            'extractor_retries': 1,
             'ignoreerrors': True,
             'no_check_certificate': True,
-            'prefer_insecure': False,
+            'prefer_insecure': True,
             'nocheckcertificate': True,
             'source_address': '0.0.0.0',
             'forceipv4': True,
@@ -42,22 +42,19 @@ class MusicPlayer:
             'rm_cache_dir': True,
             'extractor_args': {
                 'youtube': {
-                    'player_client': ['ios', 'android_music', 'android_embedded'],
-                    'player_skip': ['configs', 'webpage']
+                    'player_client': ['android_embedded'],
+                    'player_skip': ['configs', 'webpage', 'js']
                 }
             },
             'http_headers': {
-                'User-Agent': 'com.google.ios.youtube/19.29.1 (iPhone16,2; U; CPU iOS 17_5_1 like Mac OS X;)',
+                'User-Agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
                 'Accept': '*/*',
-                'Accept-Language': 'en-US,en;q=0.9',
-                'Accept-Encoding': 'gzip, deflate',
-                'Connection': 'keep-alive',
             },
         }
         
         self.ffmpeg_options = {
-            'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 -reconnect_at_eof 1 -multiple_requests 1',
-            'options': '-vn -bufsize 512k -thread_queue_size 1024'
+            'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 2',
+            'options': '-vn -bufsize 256k'
         }
         
         self.ytdl_fast = yt_dlp.YoutubeDL(self.ytdl_fast_options)
@@ -270,9 +267,11 @@ class MusicPlayer:
         if any(word in title_lower for word in ['bangla', 'bengali', 'bangladesh']):
             related_songs.extend([
                 "Amar Shonar Bangla",
-                "Ekla Cholo Re", 
+                "Ekla Cholo Re",
                 "Chol Rabi Chole Jabo",
-                "Ami Banglay Gaan Gai"
+                "Ami Banglay Gaan Gai",
+                "Diner Sheshe Ghumer Deshe",
+                "Tomar Khola Hawa"
             ])
         
         elif any(word in title_lower for word in ['hindi', 'bollywood', 'bhangra']):
@@ -280,81 +279,97 @@ class MusicPlayer:
                 "Tum Hi Ho",
                 "Kal Ho Naa Ho",
                 "Gerua",
-                "Dil Diyan Gallan"
+                "Dil Diyan Gallan",
+                "Raabta",
+                "Hawayein"
             ])
             
         # Genre detection
         elif any(word in title_lower for word in ['rock', 'metal', 'guitar']):
             related_songs.extend([
-                "Bohemian Rhapsody",
+                "Bohemian Rhapsody Queen",
                 "Sweet Child O Mine",
                 "Hotel California",
-                "Stairway to Heaven"
+                "Stairway to Heaven",
+                "Don't Stop Believin",
+                "We Will Rock You"
             ])
             
         elif any(word in title_lower for word in ['pop', 'dance', 'party']):
             related_songs.extend([
-                "Shape of You",
-                "Blinding Lights", 
-                "As It Was",
-                "Anti Hero"
+                f"Shape of You Ed Sheeran",
+                f"Blinding Lights The Weeknd",
+                f"As It Was Harry Styles",
+                f"Anti Hero Taylor Swift",
+                f"Flowers Miley Cyrus",
+                f"Good 4 U Olivia Rodrigo"
             ])
             
         elif any(word in title_lower for word in ['rap', 'hip hop', 'drake', 'eminem']):
             related_songs.extend([
-                "Gods Plan",
-                "Lose Yourself",
-                "HUMBLE",
-                "Sicko Mode"
+                "God's Plan Drake",
+                "Lose Yourself Eminem",
+                "HUMBLE Kendrick Lamar",
+                "Sicko Mode Travis Scott",
+                "Old Town Road Lil Nas X",
+                "Industry Baby Lil Nas X"
             ])
             
         elif any(word in title_lower for word in ['love', 'romantic', 'heart']):
             related_songs.extend([
                 "Perfect Ed Sheeran",
-                "All of Me",
-                "Thinking Out Loud",
-                "A Thousand Years"
+                "All of Me John Legend",
+                "Thinking Out Loud Ed Sheeran",
+                "A Thousand Years Christina Perri",
+                "Make You Feel My Love",
+                "Can't Help Myself"
             ])
             
         # Default popular songs if no specific genre detected
         if not related_songs:
             related_songs.extend([
-                "Heat Waves",
-                "Stay",
-                "Levitating",
-                "Watermelon Sugar",
-                "Bad Habits",
-                "Peaches"
+                f"Heat Waves Glass Animals",
+                f"Stay The Kid LAROI",
+                f"Levitating Dua Lipa",
+                f"Good as Hell Lizzo",
+                f"Watermelon Sugar Harry Styles",
+                f"drivers license Olivia Rodrigo",
+                f"Bad Habits Ed Sheeran",
+                f"Peaches Justin Bieber"
             ])
         
-        return related_songs[:6]  # Return max 6 suggestions
+        # Add year-specific hits if year detected
+        if year and year != "2024":
+            related_songs.append(f"best songs {year}")
+            related_songs.append(f"top hits {year}")
+        
+        return related_songs[:8]  # Return max 8 suggestions
 
     async def load_related_songs(self, ctx, original_query, original_title):
-        """Load related songs using smart keyword matching - IMPROVED VERSION"""
+        """Load related songs using smart keyword matching - FAST VERSION"""
         try:
             guild_id = ctx.guild.id
             loaded_count = 0
             
             # Smart keyword matching based on song characteristics
             related_songs = self.generate_smart_related_songs(original_title, original_query)
-            print(f"Generated related songs for '{original_title}': {related_songs}")
             
-            # Search for songs individually for better accuracy
-            for song_query in related_songs[:3]:  # Only search for top 3 to avoid timeout
-                try:
-                    search_query = f"ytsearch1:{song_query}"
-                    print(f"Searching for: {search_query}")
-                    
-                    loop = asyncio.get_event_loop()
-                    info = await asyncio.wait_for(
-                        loop.run_in_executor(None, lambda sq=search_query: self.ytdl_fast.extract_info(sq, download=False)),
-                        timeout=4.0  # Increased timeout
-                    )
-                    
-                    if info and 'entries' in info and info['entries'] and info['entries'][0]:
-                        entry = info['entries'][0]
-                        print(f"Found: {entry.get('title', 'Unknown')}")
+            # Search for multiple songs in one batch query for speed
+            batch_search = " ".join(related_songs[:4])  # Combine first 4 songs
+            search_query = f"ytsearch4:{batch_search}"
+            
+            loop = asyncio.get_event_loop()
+            info = await asyncio.wait_for(
+                loop.run_in_executor(None, lambda: self.ytdl_fast.extract_info(search_query, download=False)),
+                timeout=5.0  # Shorter timeout
+            )
+            
+            if info and 'entries' in info and info['entries']:
+                for entry in info['entries'][:4]:  # Take first 4 results
+                    if not entry:
+                        continue
                         
+                    try:
                         # Add song to queue quickly
                         song_info = {
                             'title': entry.get('title', 'Unknown Title'),
@@ -371,84 +386,16 @@ class MusicPlayer:
                         self.add_to_queue(guild_id, song_info)
                         loaded_count += 1
                         
-                        # Small delay between searches
-                        await asyncio.sleep(0.3)
-                        
-                    else:
-                        print(f"No results for: {song_query}")
-                        
-                except Exception as e:
-                    print(f"Error searching for '{song_query}': {e}")
-                    continue
+                    except Exception:
+                        continue
             
             if loaded_count > 0:
                 await ctx.send(f'✅ **Found {loaded_count} related songs and added them to queue!**')
             else:
-                print("No related songs found, trying fallback...")
-                # Try fallback with popular songs
-                await self.load_fallback_songs(ctx, guild_id)
-                
-        except Exception as e:
-            print(f"Error loading related songs: {e}")
-            # Try fallback instead of showing warning
-            try:
-                await self.load_fallback_songs(ctx, guild_id)
-            except Exception as fallback_error:
-                print(f"Fallback also failed: {fallback_error}")
-                await ctx.send('⚠️ **Had trouble finding related songs, but your song is playing!**')
-
-    async def load_fallback_songs(self, ctx, guild_id):
-        """Load popular fallback songs when related search fails"""
-        try:
-            # Use very simple, popular song names that should always work
-            fallback_songs = [
-                "Shape of You",
-                "Blinding Lights", 
-                "Heat Waves"
-            ]
-            
-            loaded_count = 0
-            for song_query in fallback_songs:
-                try:
-                    search_query = f"ytsearch1:{song_query}"
-                    
-                    loop = asyncio.get_event_loop()
-                    info = await asyncio.wait_for(
-                        loop.run_in_executor(None, lambda: self.ytdl_fast.extract_info(search_query, download=False)),
-                        timeout=4.0  # Slightly longer timeout for fallback
-                    )
-                    
-                    if info and 'entries' in info and info['entries'] and info['entries'][0]:
-                        entry = info['entries'][0]
-                        
-                        song_info = {
-                            'title': entry.get('title', 'Unknown Title'),
-                            'duration': entry.get('duration_string', 'Unknown'),
-                            'duration_seconds': entry.get('duration', 0),
-                            'thumbnail': entry.get('thumbnail'),
-                            'author': entry.get('uploader', 'Unknown Artist'),
-                            'webpage_url': f"https://www.youtube.com/watch?v={entry['id']}",
-                            'url': None,
-                            'video_id': entry['id'],
-                            'requested_by': ctx.author.name
-                        }
-                        
-                        self.add_to_queue(guild_id, song_info)
-                        loaded_count += 1
-                        
-                        await asyncio.sleep(0.3)
-                        
-                except Exception as e:
-                    print(f"Fallback search failed for '{song_query}': {e}")
-                    continue
-            
-            if loaded_count > 0:
-                await ctx.send(f'✅ **Added {loaded_count} popular songs to queue!**')
-            else:
                 await ctx.send('⚠️ **Could not find related songs at the moment. Try manually adding songs!**')
                 
         except Exception as e:
-            print(f"Fallback system failed: {e}")
+            print(f"Error loading related songs: {e}")
             await ctx.send('⚠️ **Had trouble finding related songs, but your song is playing!**')
 
     async def try_load_playlist_songs(self, ctx, playlist_url):
@@ -623,10 +570,6 @@ class MusicPlayer:
             def after_play(error):
                 if error:
                     print(f"Playback error: {error}")
-                    # Check if it's a network error that we can retry
-                    error_str = str(error).lower()
-                    if any(keyword in error_str for keyword in ['connection', 'network', 'timeout', 'keepalive', 'invalid argument']):
-                        print("Network error detected, will attempt to continue with next song")
                 asyncio.run_coroutine_threadsafe(
                     self.song_finished(ctx, error), self.bot.loop
                 )
@@ -761,14 +704,7 @@ class MusicPlayer:
     async def song_finished(self, ctx, error=None):
         """Handle when a song finishes"""
         if error:
-            print(f"Song finished with error: {error}")
-            error_str = str(error).lower()
-            # If it's a network error, send a brief notice
-            if any(keyword in error_str for keyword in ['connection', 'network', 'timeout', 'keepalive', 'invalid argument']):
-                try:
-                    await ctx.send('🔄 **Connection issue detected, continuing with next song...**')
-                except:
-                    pass  # Don't fail if we can't send the message
+            print(f"Playback error: {error}")
         
         await asyncio.sleep(0.5)
         
@@ -781,14 +717,11 @@ class MusicPlayer:
         repeat_mode = self.get_repeat_mode(guild_id)
         current_song = self.current_songs.get(guild_id)
         
-        # Handle repeat modes
         if repeat_mode == 1 and current_song:
-            # Repeat current track
             if guild_id not in self.queues:
                 self.queues[guild_id] = []
             self.queues[guild_id].insert(0, current_song.copy())
         elif repeat_mode == 2 and current_song:
-            # Add current track to end of queue
             if guild_id not in self.queues:
                 self.queues[guild_id] = []
             self.queues[guild_id].append(current_song.copy())
@@ -797,12 +730,6 @@ class MusicPlayer:
         if guild_id in self.queues and self.queues[guild_id]:
             next_song = self.queues[guild_id][0]
             await self.play_instant(ctx, next_song)
-        else:
-            # No more songs in queue
-            try:
-                await ctx.send('🎵 **Queue finished! Add more songs or use `--related` to find similar music.**')
-            except:
-                pass
 
     def add_to_queue(self, guild_id, song_info):
         """Add song to guild queue"""
@@ -989,10 +916,6 @@ class MusicPlayer:
     
     def get_volume_percentage(self, guild_id):
         return int(self.get_volume(guild_id) * 100)  # Returns 20% by default
-    
-    def get_shuffle_text(self, guild_id):
-        """Get shuffle mode text"""
-        return "Shuffle: On" if self.get_shuffle_mode(guild_id) else "Shuffle: Off"
 
 
 # Keep the same MusicControlView class from your previous code
