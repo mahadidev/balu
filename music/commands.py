@@ -149,8 +149,6 @@ def setup_music_commands(bot, music_player):
         ctx = SlashContext(interaction)
         await music_player.play(ctx, query, related=related)
 
-
-
     @bot.command()
     async def repeat(ctx, mode=None):
         """Set repeat mode: off, track, queue"""

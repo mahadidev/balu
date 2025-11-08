@@ -8,7 +8,7 @@ from database.db_manager import DatabaseManager
 
 # Import command modules
 from core_commands import setup_core_commands
-from music.commands import setup_music_commands
+from music.commands import setup_music_commands  # This now points to the file above
 from move.commands import setup_voice_commands
 from chat.commands import GlobalChatCommands
 from channel.commands import ChannelCommands
@@ -45,7 +45,7 @@ async def on_ready():
     
     print('⚙️ Setting up command modules...')
     setup_core_commands(bot)
-    setup_music_commands(bot, music_player)
+    setup_music_commands(bot, music_player)  # This will use the function from music/commands.py
     setup_voice_commands(bot, voice_manager)
     
     print('💬 Adding chat system cog...')
@@ -102,7 +102,6 @@ async def on_error(event, *args, **kwargs):
     print(f'❌ Error in event {event}: {args}')
     import traceback
     traceback.print_exc()
-
 
 # Run the bot with retry logic
 async def run_bot_with_retry():

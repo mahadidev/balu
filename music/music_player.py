@@ -18,97 +18,53 @@ class MusicPlayer:
         self.shuffle_modes = {}
         self.volumes = {}
         self.url_cache = {}
-        self.song_history = {}  # Track previous songs for each guild
+        self.song_history = {}
         
-        # ULTRA FAST yt-dlp options - optimized for VPS stability
+        # VPS-OPTIMIZED yt-dlp options with bot detection bypass
         self.ytdl_fast_options = {
-            'format': 'bestaudio[ext=m4a]/bestaudio/best',
+            'format': 'bestaudio/best',
             'quiet': True,
             'no_warnings': True,
             'noplaylist': True,
             'extract_flat': False,
-            'socket_timeout': 15,
-            'retries': 3,
-            'fragment_retries': 3,
-            'extractor_retries': 3,
+            'socket_timeout': 10,
+            'retries': 5,
+            'fragment_retries': 5,
+            'extractor_retries': 5,
             'ignoreerrors': True,
             'no_check_certificate': True,
-            'prefer_insecure': False,
             'nocheckcertificate': True,
             'cachedir': False,
             'no_cache_dir': True,
             'rm_cache_dir': True,
             'geo_bypass': True,
             'geo_bypass_country': 'US',
+            
+            # CRITICAL: Bypass bot detection
             'extractor_args': {
                 'youtube': {
-                    'player_client': ['android_music', 'android_embedded', 'android'],
-                    'player_skip': ['configs', 'webpage'],
-                    'skip': ['hls', 'dash']
+                    'player_client': ['android', 'android_embedded', 'web'],
+                    'player_skip': ['configs', 'webpage', 'js'],
                 }
             },
             'http_headers': {
-                'User-Agent': 'com.google.android.youtube/17.31.35 (Linux; U; Android 11) gzip',
-                'Accept': '*/*',
-                'Accept-Language': 'en-US,en;q=0.9',
+                'User-Agent': 'Mozilla/5.0 (Linux; Android 10; SM-G981B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.162 Mobile Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language': 'en-us,en;q=0.5',
                 'Accept-Encoding': 'gzip, deflate',
                 'Connection': 'keep-alive',
-                'X-YouTube-Client-Name': '21',
-                'X-YouTube-Client-Version': '6.0',
             },
         }
         
         self.ffmpeg_options = {
-            'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 -reconnect_at_eof 1 -multiple_requests 1',
+            'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
             'options': '-vn -bufsize 512k -thread_queue_size 1024'
         }
         
         self.ytdl_fast = yt_dlp.YoutubeDL(self.ytdl_fast_options)
 
-    async def join(self, ctx):
-        """Join voice channel"""
-        if ctx.author.voice is None:
-            await ctx.send('❌ You need to be in a voice channel!')
-            return False
-            
-        channel = ctx.author.voice.channel
-        
-        if ctx.guild.id in self.voice_clients:
-            await self.voice_clients[ctx.guild.id].move_to(channel)
-        else:
-            self.voice_clients[ctx.guild.id] = await channel.connect()
-            
-        return True
-
-    async def leave(self, ctx):
-        """Leave voice channel"""
-        if ctx.guild.id in self.voice_clients:
-            await self.voice_clients[ctx.guild.id].disconnect()
-            del self.voice_clients[ctx.guild.id]
-            
-            if ctx.guild.id in self.queues:
-                del self.queues[ctx.guild.id]
-            if ctx.guild.id in self.current_songs:
-                del self.current_songs[ctx.guild.id]
-            if ctx.guild.id in self.repeat_modes:
-                del self.repeat_modes[ctx.guild.id]
-            if ctx.guild.id in self.shuffle_modes:
-                del self.shuffle_modes[ctx.guild.id]
-            if ctx.guild.id in self.start_times:
-                del self.start_times[ctx.guild.id]
-            if ctx.guild.id in self.music_messages:
-                del self.music_messages[ctx.guild.id]
-            if ctx.guild.id in self.volumes:
-                del self.volumes[ctx.guild.id]
-            if ctx.guild.id in self.song_history:
-                del self.song_history[ctx.guild.id]
-                
-            await ctx.send('👋 Left voice channel!')
-        else:
-            await ctx.send('❌ Not connected to a voice channel!')
-
     async def get_audio_url_ultra_fast(self, query):
-        """ULTRA FAST audio URL extraction with VPS bot detection bypass"""
+        """VPS-OPTIMIZED audio URL extraction with multiple fallbacks"""
         try:
             # Check cache first
             if query in self.url_cache:
@@ -122,20 +78,21 @@ class MusicPlayer:
             
             loop = asyncio.get_event_loop()
             
-            # Try multiple extraction methods to bypass bot detection
+            # Try multiple extraction methods with different configurations
             extraction_methods = [
                 self.ytdl_fast,
-                self.create_fallback_ytdl(),
-                self.create_mobile_ytdl()
+                self.create_mobile_ytdl(),
+                self.create_minimal_ytdl(),
+                self.create_invidious_fallback()
             ]
             
             for i, ytdl_instance in enumerate(extraction_methods):
                 try:
-                    timeout = 8.0 + (i * 2)  # Increase timeout for each attempt
+                    print(f"Trying extraction method {i+1} for: {query}")
                     
                     info = await asyncio.wait_for(
                         loop.run_in_executor(None, lambda: ytdl_instance.extract_info(query, download=False)),
-                        timeout=timeout
+                        timeout=12.0
                     )
                     
                     if not info:
@@ -149,21 +106,18 @@ class MusicPlayer:
                     else:
                         entry = info
                     
-                    # Get the audio URL - prioritize direct URLs
+                    # Get the audio URL
                     url = entry.get('url')
-                    if not url:
-                        # Quick format search
-                        if 'formats' in entry:
-                            formats = entry['formats'][:8]  # Check more formats on VPS
-                            for fmt in formats:
-                                if fmt.get('acodec') != 'none' and fmt.get('url'):
-                                    url = fmt['url']
-                                    break
+                    if not url and 'formats' in entry:
+                        # Try to find a direct audio URL
+                        for fmt in entry['formats']:
+                            if fmt.get('acodec') != 'none' and fmt.get('url'):
+                                url = fmt['url']
+                                break
                     
                     if not url:
                         continue
                     
-                    # Get basic title
                     title = entry.get('title', 'Unknown Title')
                     
                     # Cache the result
@@ -173,51 +127,70 @@ class MusicPlayer:
                         'timestamp': datetime.now()
                     }
                     
-                    print(f"Successfully extracted using method {i+1}: {title}")
+                    print(f"✅ Successfully extracted using method {i+1}: {title}")
                     return url, title
                     
+                except asyncio.TimeoutError:
+                    print(f"⏰ Method {i+1} timed out")
+                    continue
                 except Exception as e:
-                    print(f"Extraction method {i+1} failed: {e}")
+                    print(f"❌ Method {i+1} failed: {str(e)[:100]}...")
                     continue
             
-            print(f"All extraction methods failed for: {query}")
-            return None, None
+            print(f"💥 All extraction methods failed for: {query}")
+            
+            # Final fallback: Try with direct YouTube Music
+            return await self.try_youtube_music_fallback(query)
             
         except Exception as e:
-            print(f"Critical error getting audio URL: {e}")
+            print(f"💥 Critical error getting audio URL: {e}")
             return None, None
-    
-    def create_fallback_ytdl(self):
-        """Create fallback yt-dlp instance for bot detection bypass"""
-        fallback_options = {
+
+    def create_mobile_ytdl(self):
+        """Mobile-optimized configuration"""
+        mobile_options = {
             'format': 'bestaudio/best',
             'quiet': True,
             'no_warnings': True,
             'noplaylist': True,
-            'extract_flat': False,
+            'socket_timeout': 15,
+            'retries': 3,
+            'ignoreerrors': True,
+            'extractor_args': {
+                'youtube': {
+                    'player_client': ['android_music', 'mweb', 'ios'],
+                }
+            },
+            'http_headers': {
+                'User-Agent': 'com.google.android.youtube/17.31.35 (Linux; U; Android 11) gzip',
+                'Accept': '*/*',
+                'X-YouTube-Client-Name': '2',
+                'X-YouTube-Client-Version': '17.31.35',
+            }
+        }
+        return yt_dlp.YoutubeDL(mobile_options)
+
+    def create_minimal_ytdl(self):
+        """Minimal configuration for maximum compatibility"""
+        minimal_options = {
+            'format': 'bestaudio/best',
+            'quiet': True,
+            'no_warnings': True,
+            'noplaylist': True,
             'socket_timeout': 20,
             'retries': 2,
             'ignoreerrors': True,
             'no_check_certificate': True,
-            'extractor_args': {
-                'youtube': {
-                    'player_client': ['web', 'android_embedded'],
-                    'player_skip': ['configs']
-                }
-            },
             'http_headers': {
-                'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                'Accept-Language': 'en-us,en;q=0.5',
-                'Sec-Fetch-Mode': 'navigate',
+                'User-Agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)'
             }
         }
-        return yt_dlp.YoutubeDL(fallback_options)
-    
-    def create_mobile_ytdl(self):
-        """Create mobile yt-dlp instance as last resort"""
-        mobile_options = {
-            'format': 'best[height<=480]/bestaudio/best',
+        return yt_dlp.YoutubeDL(minimal_options)
+
+    def create_invidious_fallback(self):
+        """Use Invidious as fallback (public YouTube API)"""
+        invidious_options = {
+            'format': 'bestaudio/best',
             'quiet': True,
             'no_warnings': True,
             'noplaylist': True,
@@ -226,19 +199,61 @@ class MusicPlayer:
             'ignoreerrors': True,
             'extractor_args': {
                 'youtube': {
-                    'player_client': ['mweb', 'android'],
+                    'player_client': ['web'],
                 }
             },
-            'http_headers': {
-                'User-Agent': 'Mozilla/5.0 (Linux; Android 10; SM-G981B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.162 Mobile Safari/537.36',
-                'Accept': '*/*',
-            }
+            # Use Invidious instance as fallback
+            'youtube_base_url': 'https://invidious.snopyta.org',
         }
-        return yt_dlp.YoutubeDL(mobile_options)
+        return yt_dlp.YoutubeDL(invidious_options)
+
+    async def try_youtube_music_fallback(self, query):
+        """Final fallback using YouTube Music search"""
+        try:
+            print("🎵 Trying YouTube Music fallback...")
+            
+            ytm_options = {
+                'format': 'bestaudio/best',
+                'quiet': True,
+                'no_warnings': True,
+                'extract_flat': True,
+                'socket_timeout': 15,
+                'ignoreerrors': True,
+                'extractor_args': {
+                    'youtube': {
+                        'player_client': ['android_music'],
+                    }
+                },
+            }
+            
+            ytm_ytdl = yt_dlp.YoutubeDL(ytm_options)
+            
+            # Search YouTube Music
+            music_query = f"ytmsearch1:{query}"
+            loop = asyncio.get_event_loop()
+            
+            info = await asyncio.wait_for(
+                loop.run_in_executor(None, lambda: ytm_ytdl.extract_info(music_query, download=False)),
+                timeout=10.0
+            )
+            
+            if info and 'entries' in info and info['entries']:
+                entry = info['entries'][0]
+                video_url = f"https://www.youtube.com/watch?v={entry['id']}"
+                
+                # Now get the actual audio URL using regular extraction
+                audio_url, title = await self.get_audio_url_ultra_fast(video_url)
+                if audio_url:
+                    return audio_url, title
+            
+            return None, None
+            
+        except Exception as e:
+            print(f"YouTube Music fallback failed: {e}")
+            return None, None
 
     async def play(self, ctx, query, related=False):
-        """BULLETPROOF play - always play something"""
-        # Ensure user is in voice channel
+        """Improved play with better error handling"""
         if not ctx.author.voice:
             await ctx.send('❌ You need to be in a voice channel!')
             return
@@ -249,355 +264,17 @@ class MusicPlayer:
 
         voice_client = self.voice_clients[ctx.guild.id]
         
-        # Check if it's a playlist URL with video ID
-        is_playlist_with_video = 'watch?v=' in query and 'list=' in query
-        
-        if is_playlist_with_video:
-            await self.handle_playlist_url(ctx, query, voice_client)
-        else:
-            await self.handle_single_song(ctx, query, voice_client, related=related)
-
-    async def handle_playlist_url(self, ctx, playlist_url, voice_client):
-        """Handle playlist URLs by extracting the single video first"""
-        search_msg = await ctx.send('🎵 **Processing YouTube link...**')
-        
-        try:
-            # Extract video ID from the URL
-            video_id = self.extract_video_id(playlist_url)
-            if not video_id:
-                await search_msg.edit(content='❌ **Invalid YouTube URL!**')
-                return
-            
-            # Create single video URL
-            single_url = f"https://www.youtube.com/watch?v={video_id}"
-            
-            # Try to play the single video
-            audio_url, title = await self.get_audio_url_ultra_fast(single_url)
-            
-            if not audio_url:
-                await search_msg.edit(content='❌ **Could not play this video!**')
-                return
-            
-            # Create song info
-            song_info = {
-                'title': title,
-                'duration': 'Loading...',
-                'duration_seconds': 0,
-                'thumbnail': None,
-                'author': 'Loading...',
-                'webpage_url': single_url,
-                'url': audio_url,
-                'requested_by': ctx.author.name
-            }
-            
-            # Add to queue
-            self.add_to_queue(ctx.guild.id, song_info)
-            
-            if not voice_client.is_playing():
-                await search_msg.delete()
-                await self.play_instant(ctx, song_info)
-                
-                # Send success message
-                await ctx.send(f'🎵 **Now Playing:** {title}')
-            else:
-                await search_msg.edit(content=f'✅ **Added to queue:** {title}')
-            
-            # Try to load more songs from playlist in background (silently)
-            asyncio.create_task(self.try_load_playlist_songs(ctx, playlist_url))
-                
-        except Exception as e:
-            print(f"Playlist URL error: {e}")
-            await search_msg.edit(content='❌ **Error processing YouTube link!**')
-
-    def extract_video_id(self, url):
-        """Extract video ID from YouTube URL"""
-        try:
-            if 'watch?v=' in url:
-                return url.split('watch?v=')[1].split('&')[0]
-            elif 'youtu.be/' in url:
-                return url.split('youtu.be/')[1].split('?')[0]
-            return None
-        except:
-            return None
-
-    def generate_smart_related_songs(self, title, query):
-        """Generate related song suggestions using smart keyword matching"""
-        related_songs = []
-        
-        # Analyze the song to determine genre/style
-        title_lower = title.lower()
-        query_lower = query.lower()
-        
-        # Extract year if present
-        import re
-        year_match = re.search(r'20\d{2}', title)
-        year = year_match.group() if year_match else "2024"
-        
-        # Language/Region detection
-        if any(word in title_lower for word in ['bangla', 'bengali', 'bangladesh']):
-            related_songs.extend([
-                "Amar Shonar Bangla",
-                "Ekla Cholo Re", 
-                "Chol Rabi Chole Jabo",
-                "Ami Banglay Gaan Gai"
-            ])
-        
-        elif any(word in title_lower for word in ['hindi', 'bollywood', 'bhangra']):
-            related_songs.extend([
-                "Tum Hi Ho",
-                "Kal Ho Naa Ho",
-                "Gerua",
-                "Dil Diyan Gallan"
-            ])
-            
-        # Genre detection
-        elif any(word in title_lower for word in ['rock', 'metal', 'guitar']):
-            related_songs.extend([
-                "Bohemian Rhapsody",
-                "Sweet Child O Mine",
-                "Hotel California",
-                "Stairway to Heaven"
-            ])
-            
-        elif any(word in title_lower for word in ['pop', 'dance', 'party']):
-            related_songs.extend([
-                "Shape of You",
-                "Blinding Lights", 
-                "As It Was",
-                "Anti Hero"
-            ])
-            
-        elif any(word in title_lower for word in ['rap', 'hip hop', 'drake', 'eminem']):
-            related_songs.extend([
-                "Gods Plan",
-                "Lose Yourself",
-                "HUMBLE",
-                "Sicko Mode"
-            ])
-            
-        elif any(word in title_lower for word in ['love', 'romantic', 'heart']):
-            related_songs.extend([
-                "Perfect Ed Sheeran",
-                "All of Me",
-                "Thinking Out Loud",
-                "A Thousand Years"
-            ])
-            
-        # Default popular songs if no specific genre detected
-        if not related_songs:
-            related_songs.extend([
-                "Heat Waves",
-                "Stay",
-                "Levitating",
-                "Watermelon Sugar",
-                "Bad Habits",
-                "Peaches"
-            ])
-        
-        return related_songs[:6]  # Return max 6 suggestions
-
-    async def load_related_songs(self, ctx, original_query, original_title):
-        """Load related songs using smart keyword matching - IMPROVED VERSION"""
-        try:
-            guild_id = ctx.guild.id
-            loaded_count = 0
-            
-            # Smart keyword matching based on song characteristics
-            related_songs = self.generate_smart_related_songs(original_title, original_query)
-            print(f"Generated related songs for '{original_title}': {related_songs}")
-            
-            # Search for songs individually for better accuracy
-            for song_query in related_songs[:3]:  # Only search for top 3 to avoid timeout
-                try:
-                    search_query = f"ytsearch1:{song_query}"
-                    print(f"Searching for: {search_query}")
-                    
-                    loop = asyncio.get_event_loop()
-                    info = await asyncio.wait_for(
-                        loop.run_in_executor(None, lambda sq=search_query: self.ytdl_fast.extract_info(sq, download=False)),
-                        timeout=4.0  # Increased timeout
-                    )
-                    
-                    if info and 'entries' in info and info['entries'] and info['entries'][0]:
-                        entry = info['entries'][0]
-                        print(f"Found: {entry.get('title', 'Unknown')}")
-                        
-                        # Add song to queue quickly
-                        song_info = {
-                            'title': entry.get('title', 'Unknown Title'),
-                            'duration': entry.get('duration_string', 'Unknown'),
-                            'duration_seconds': entry.get('duration', 0),
-                            'thumbnail': entry.get('thumbnail'),
-                            'author': entry.get('uploader', 'Unknown Artist'),
-                            'webpage_url': f"https://www.youtube.com/watch?v={entry['id']}",
-                            'url': None,  # Will be resolved when playing
-                            'video_id': entry['id'],
-                            'requested_by': ctx.author.name
-                        }
-                        
-                        self.add_to_queue(guild_id, song_info)
-                        loaded_count += 1
-                        
-                        # Small delay between searches
-                        await asyncio.sleep(0.3)
-                        
-                    else:
-                        print(f"No results for: {song_query}")
-                        
-                except Exception as e:
-                    print(f"Error searching for '{song_query}': {e}")
-                    continue
-            
-            if loaded_count > 0:
-                await ctx.send(f'✅ **Found {loaded_count} related songs and added them to queue!**')
-            else:
-                print("No related songs found, trying fallback...")
-                # Try fallback with popular songs
-                await self.load_fallback_songs(ctx, guild_id)
-                
-        except Exception as e:
-            print(f"Error loading related songs: {e}")
-            # Try fallback instead of showing warning
-            try:
-                await self.load_fallback_songs(ctx, guild_id)
-            except Exception as fallback_error:
-                print(f"Fallback also failed: {fallback_error}")
-                await ctx.send('⚠️ **Had trouble finding related songs, but your song is playing!**')
-
-    async def load_fallback_songs(self, ctx, guild_id):
-        """Load popular fallback songs when related search fails"""
-        try:
-            # Use very simple, popular song names that should always work
-            fallback_songs = [
-                "Shape of You",
-                "Blinding Lights", 
-                "Heat Waves"
-            ]
-            
-            loaded_count = 0
-            for song_query in fallback_songs:
-                try:
-                    search_query = f"ytsearch1:{song_query}"
-                    
-                    loop = asyncio.get_event_loop()
-                    info = await asyncio.wait_for(
-                        loop.run_in_executor(None, lambda: self.ytdl_fast.extract_info(search_query, download=False)),
-                        timeout=4.0  # Slightly longer timeout for fallback
-                    )
-                    
-                    if info and 'entries' in info and info['entries'] and info['entries'][0]:
-                        entry = info['entries'][0]
-                        
-                        song_info = {
-                            'title': entry.get('title', 'Unknown Title'),
-                            'duration': entry.get('duration_string', 'Unknown'),
-                            'duration_seconds': entry.get('duration', 0),
-                            'thumbnail': entry.get('thumbnail'),
-                            'author': entry.get('uploader', 'Unknown Artist'),
-                            'webpage_url': f"https://www.youtube.com/watch?v={entry['id']}",
-                            'url': None,
-                            'video_id': entry['id'],
-                            'requested_by': ctx.author.name
-                        }
-                        
-                        self.add_to_queue(guild_id, song_info)
-                        loaded_count += 1
-                        
-                        await asyncio.sleep(0.3)
-                        
-                except Exception as e:
-                    print(f"Fallback search failed for '{song_query}': {e}")
-                    continue
-            
-            if loaded_count > 0:
-                await ctx.send(f'✅ **Added {loaded_count} popular songs to queue!**')
-            else:
-                await ctx.send('⚠️ **Could not find related songs at the moment. Try manually adding songs!**')
-                
-        except Exception as e:
-            print(f"Fallback system failed: {e}")
-            await ctx.send('⚠️ **Had trouble finding related songs, but your song is playing!**')
-
-    async def try_load_playlist_songs(self, ctx, playlist_url):
-        """Try to load playlist songs in background (silent failure)"""
-        try:
-            # Use a separate yt-dlp instance for playlist extraction
-            playlist_opts = {
-                'format': 'bestaudio/best',
-                'quiet': True,
-                'no_warnings': True,
-                'noplaylist': False,
-                'extract_flat': True,
-                'socket_timeout': 8,
-                'retries': 1,
-                'ignoreerrors': True,
-                'extractor_args': {
-                    'youtube': {
-                        'player_client': ['android_embedded'],
-                    }
-                },
-            }
-            
-            playlist_ytdl = yt_dlp.YoutubeDL(playlist_opts)
-            
-            loop = asyncio.get_event_loop()
-            info = await loop.run_in_executor(
-                None, lambda: playlist_ytdl.extract_info(playlist_url, download=False)
-            )
-            
-            if info and 'entries' in info and info['entries']:
-                entries = [entry for entry in info['entries'] if entry][:10]  # Limit to 10
-                
-                if len(entries) > 1:
-                    guild_id = ctx.guild.id
-                    loaded_count = 0
-                    
-                    # Skip first entry (already playing)
-                    for entry in entries[1:]:
-                        try:
-                            video_url = f"https://www.youtube.com/watch?v={entry['id']}"
-                            audio_url, title = await self.get_audio_url_ultra_fast(video_url)
-                            
-                            if audio_url:
-                                song_info = {
-                                    'title': entry.get('title', title),
-                                    'duration': 'Loading...',
-                                    'duration_seconds': 0,
-                                    'thumbnail': None,
-                                    'author': entry.get('uploader', 'Unknown Artist'),
-                                    'webpage_url': video_url,
-                                    'url': audio_url,
-                                    'requested_by': ctx.author.name
-                                }
-                                
-                                self.add_to_queue(guild_id, song_info)
-                                loaded_count += 1
-                                
-                                await asyncio.sleep(0.1)  # Small delay
-                                
-                        except Exception:
-                            continue
-                    
-                    if loaded_count > 0:
-                        await ctx.send(f'✅ **Added {loaded_count} more songs from YouTube Radio**')
-                        
-        except Exception:
-            # Silent failure - we already have the first song playing
-            pass
-
-    async def handle_single_song(self, ctx, query, voice_client, related=False):
-        """Handle single song playback"""
         search_msg = await ctx.send('⚡ **Getting song...**')
         
         try:
-            # Get audio URL ULTRA FAST
+            # Get audio URL with improved error handling
             audio_url, title = await self.get_audio_url_ultra_fast(query)
             
             if not audio_url:
-                await search_msg.edit(content='❌ **Could not find playable audio!**')
+                await search_msg.edit(content='❌ **Could not find playable audio!**\n💡 *YouTube might be blocking requests. Try again in a moment.*')
                 return
             
-            # Create minimal song info
+            # Create song info
             song_info = {
                 'title': title,
                 'duration': 'Loading...',
@@ -616,14 +293,12 @@ class MusicPlayer:
                 await search_msg.delete()
                 await self.play_instant(ctx, song_info)
                 
-                # If --related flag is used, load similar songs in background
                 if related:
                     await ctx.send(f'🎵 **Now Playing:** {title}\n🔍 **Finding related songs...**')
                     asyncio.create_task(self.load_related_songs(ctx, query, title))
             else:
                 await search_msg.edit(content=f'✅ **Added to queue:** {title}')
                 
-                # If --related flag is used, load similar songs in background
                 if related:
                     asyncio.create_task(self.load_related_songs(ctx, query, title))
                 
@@ -1061,7 +736,66 @@ class MusicPlayer:
         """Get shuffle mode text"""
         return "Shuffle: On" if self.get_shuffle_mode(guild_id) else "Shuffle: Off"
 
+    async def add_playlist(self, ctx, playlist_url):
+        """Add entire playlist to queue"""
+        try:
+            await ctx.send('📋 Loading playlist... This may take a moment.')
+            
+            playlist_opts = {
+                'format': 'bestaudio/best',
+                'quiet': True,
+                'no_warnings': True,
+                'noplaylist': False,
+                'extract_flat': True,
+                'socket_timeout': 15,
+                'ignoreerrors': True,
+            }
+            
+            playlist_ytdl = yt_dlp.YoutubeDL(playlist_opts)
+            loop = asyncio.get_event_loop()
+            
+            info = await loop.run_in_executor(
+                None, lambda: playlist_ytdl.extract_info(playlist_url, download=False)
+            )
+            
+            if not info or 'entries' not in info or not info['entries']:
+                await ctx.send('❌ Could not load playlist or playlist is empty!')
+                return
+            
+            entries = [entry for entry in info['entries'] if entry]
+            loaded_count = 0
+            
+            for entry in entries:
+                try:
+                    video_url = f"https://www.youtube.com/watch?v={entry['id']}"
+                    audio_url, title = await self.get_audio_url_ultra_fast(video_url)
+                    
+                    if audio_url:
+                        song_info = {
+                            'title': entry.get('title', title),
+                            'duration': 'Loading...',
+                            'duration_seconds': 0,
+                            'thumbnail': None,
+                            'author': entry.get('uploader', 'Unknown Artist'),
+                            'webpage_url': video_url,
+                            'url': audio_url,
+                            'requested_by': ctx.author.name
+                        }
+                        
+                        self.add_to_queue(ctx.guild.id, song_info)
+                        loaded_count += 1
+                        
+                except Exception:
+                    continue
+            
+            await ctx.send(f'✅ Added {loaded_count} songs from playlist to queue!')
+            
+        except Exception as e:
+            print(f"Playlist error: {e}")
+            await ctx.send('❌ Error loading playlist!')
 
+
+        
 # Keep the same MusicControlView class from your previous code
 class MusicControlView(discord.ui.View):
     def __init__(self, music_player, guild_id):
