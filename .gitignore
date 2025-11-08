@@ -84,3 +84,4 @@ website
 *.tmp
 *.temp
 .venv
+*.pyc
