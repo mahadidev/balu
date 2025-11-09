@@ -91,12 +91,17 @@ async def on_ready():
     # Sync slash commands with timeout
     try:
         print('🔄 Syncing slash commands...')
-        # Clear existing commands first, then sync
-        bot.tree.clear_commands(guild=None)
-        synced = await asyncio.wait_for(bot.tree.sync(), timeout=30.0)
+        
+        # List all commands we're trying to sync
+        all_commands = bot.tree.get_commands()
+        print(f'📋 Commands to sync: {len(all_commands)}')
+        for cmd in all_commands:
+            print(f'  - {cmd.name}: {cmd.description}')
+        
+        synced = await asyncio.wait_for(bot.tree.sync(), timeout=60.0)
         print(f'✅ Synced {len(synced)} slash commands')
         for cmd in synced:
-            print(f'  - /{cmd.name}: {cmd.description}')
+            print(f'  ✓ /{cmd.name}: {cmd.description}')
     except discord.HTTPException as e:
         if e.status == 400 and "Entry Point command" in str(e):
             print('⚠️ Entry Point command detected, attempting individual sync...')
@@ -108,8 +113,23 @@ async def on_ready():
                     print(f'  - /{cmd.name}: {cmd.description}')
             except Exception as retry_e:
                 print(f'❌ Failed to sync commands on retry: {retry_e}')
+                print(f'❌ Error type: {type(retry_e).__name__}')
+                if hasattr(retry_e, 'status'):
+                    print(f'❌ HTTP status: {retry_e.status}')
+                if hasattr(retry_e, 'response'):
+                    print(f'❌ Response: {retry_e.response}')
+                import traceback
+                traceback.print_exc()
         else:
             print(f'❌ Failed to sync commands: {e}')
+            # Try guild-specific sync as last resort
+            try:
+                print('🔄 Attempting guild-specific sync...')
+                for guild in bot.guilds:
+                    guild_synced = await bot.tree.sync(guild=guild)
+                    print(f'✅ Synced {len(guild_synced)} commands for guild: {guild.name}')
+            except Exception as guild_e:
+                print(f'❌ Guild sync also failed: {guild_e}')
     except asyncio.TimeoutError:
         print('⏰ Slash command sync timed out, continuing without sync...')
     except Exception as e:

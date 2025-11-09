@@ -1,6 +1,35 @@
+# Core Discord Bot Dependencies
 discord.py[voice]
 wavelink
 PyNaCl
-pytz
+
+# Environment and Configuration  
 python-dotenv
+
+# Date and Time Handling
+pytz
+
+# Database Support
 aiosqlite
+
+# HTTP Client Dependencies
+aiohttp
+aiofiles
+
+# YouTube Audio Processing (backup/fallback)
+yt-dlp
+
+# Additional Networking
+requests
+
+# Type Hints Support
+typing-extensions
+
+# Voice Support Dependencies
+ffmpeg-python
+
+# Development and Logging
+colorama
+
+# Collections support (for deque in playlist_manager.py)
+# collections is built-in, no need to install

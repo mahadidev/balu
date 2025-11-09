@@ -232,9 +232,9 @@ class MusicBot(commands.Cog):
     @discord.app_commands.describe(query="Song name, artist, or URL")
     async def play_command(self, interaction: discord.Interaction, query: str):
         """Play a song"""
-        await interaction.response.defer()
-        
         try:
+            await interaction.response.defer()
+            
             player = await self.get_player(interaction)
             tracks = await self.search_tracks(query)
             
@@ -343,9 +343,17 @@ class MusicBot(commands.Cog):
                     await interaction.followup.send(embed=embed, view=view)
                 
         except discord.ApplicationCommandError as e:
-            await interaction.followup.send(f"❌ {e}", ephemeral=True)
+            print(f"❌ Application command error: {e}")
+            try:
+                await interaction.followup.send(f"❌ {e}", ephemeral=True)
+            except:
+                print(f"❌ Failed to send error message: {e}")
         except Exception as e:
-            await interaction.followup.send(f"❌ An error occurred: {e}", ephemeral=True)
+            print(f"❌ Unexpected error in play command: {e}")
+            try:
+                await interaction.followup.send(f"❌ An error occurred: {e}", ephemeral=True)
+            except:
+                print(f"❌ Failed to send error message: {e}")
 
     @discord.app_commands.command(name="pause", description="Pause the current song")
     async def pause_command(self, interaction: discord.Interaction):
