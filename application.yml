@@ -10,12 +10,12 @@ lavalink:
     connectionTimeout: 10000
     password: "youshallnotpass"
     sources:
-      youtube: false
+      youtube: true
       soundcloud: false
       bandcamp: false
       http: true
     playerUpdateInterval: 1
-    youtubeSearchEnabled: false
+    youtubeSearchEnabled: true
     soundcloudSearchEnabled: false
     bufferDurationMs: 200
     frameBufferDurationMs: 2000
