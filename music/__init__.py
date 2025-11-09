@@ -1,1 +1,1 @@
-# Music package
+# Lavalink + Wavelink music system

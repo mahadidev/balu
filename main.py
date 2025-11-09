@@ -2,13 +2,12 @@ import os
 import asyncio
 import discord
 from discord.ext import commands
-from music.music_player import MusicPlayer
+import wavelink
 from move.voice_manager import VoiceManager
 from database.db_manager import DatabaseManager
 
 # Import command modules
 from core_commands import setup_core_commands
-from music.commands import setup_music_commands  # This now points to the file above
 from move.commands import setup_voice_commands
 from chat.commands import GlobalChatCommands
 from channel.commands import ChannelCommands
@@ -24,18 +23,31 @@ intents.voice_states = True
 
 bot = commands.Bot(command_prefix='!', intents=intents)
 
-# Initialize music player, voice manager, and database
-music_player = None
+@bot.event
+async def on_wavelink_node_ready(payload: wavelink.NodeReadyEventPayload):
+    """Called when Wavelink node is ready"""
+    print(f"🎵 Wavelink Node connected: {payload.node!r} | Resumed: {payload.resumed}")
+
+@bot.event
+async def setup_hook():
+    """Setup hook to connect to Lavalink"""
+    print("🔗 Connecting to Lavalink server...")
+    try:
+        nodes = [wavelink.Node(uri="http://127.0.0.1:2333", password="youshallnotpass")]
+        await wavelink.Pool.connect(nodes=nodes, client=bot, cache_capacity=100)
+        print("✅ Connected to Lavalink server")
+    except Exception as e:
+        print(f"❌ Failed to connect to Lavalink: {e}")
+        print("💡 Make sure Lavalink server is running! Run: python start_lavalink.py")
+
+# Initialize voice manager and database
 voice_manager = None
 db_manager = None
 
 @bot.event
 async def on_ready():
-    global music_player, voice_manager, db_manager
+    global voice_manager, db_manager
     print('🎯 Bot ready event triggered')
-    
-    print('🎵 Initializing music player...')
-    music_player = MusicPlayer(bot)
     
     print('🎤 Initializing voice manager...')
     voice_manager = VoiceManager(bot)
@@ -45,8 +57,24 @@ async def on_ready():
     
     print('⚙️ Setting up command modules...')
     setup_core_commands(bot)
-    setup_music_commands(bot, music_player)  # This will use the function from music/commands.py
+    print('  ✅ Core commands loaded')
+    
     setup_voice_commands(bot, voice_manager)
+    print('  ✅ Voice commands loaded')
+    
+    print('🎵 Loading Wavelink music system...')
+    try:
+        await bot.load_extension('music.player')
+        print('  ✅ Wavelink music system loaded')
+    except Exception as e:
+        print(f'  ❌ Failed to load music system: {e}')
+        import traceback
+        traceback.print_exc()
+    
+    # Debug: Print all registered commands
+    print('📋 Registered commands:')
+    for command in bot.commands:
+        print(f'  - !{command.name}: {command.help or "No description"}')
     
     print('💬 Adding chat system cog...')
     await bot.add_cog(GlobalChatCommands(bot))
@@ -98,10 +126,34 @@ async def on_resumed():
     print('✅ Bot reconnected to Discord')
 
 @bot.event
+async def on_message(message):
+    """Debug message processing"""
+    if message.author.bot:
+        return
+    
+    if message.content.startswith('!'):
+        print(f'🔍 Processing command: {message.content} from {message.author}')
+    
+    await bot.process_commands(message)
+
+@bot.event
 async def on_error(event, *args, **kwargs):
     print(f'❌ Error in event {event}: {args}')
     import traceback
     traceback.print_exc()
+
+@bot.event
+async def on_command_error(ctx, error):
+    """Handle command errors"""
+    print(f'❌ Command error in {ctx.command}: {error}')
+    import traceback
+    traceback.print_exc()
+    
+    # Send error message to user
+    if hasattr(error, 'original'):
+        await ctx.send(f'❌ Error: {error.original}')
+    else:
+        await ctx.send(f'❌ Error: {error}')
 
 # Run the bot with retry logic
 async def run_bot_with_retry():

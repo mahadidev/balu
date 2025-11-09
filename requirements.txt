@@ -1,5 +1,6 @@
 discord.py[voice]
-yt-dlp>=2025.10.14
+wavelink
 PyNaCl
 pytz
 python-dotenv
+aiosqlite
