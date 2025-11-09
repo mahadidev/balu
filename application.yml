@@ -3,19 +3,19 @@ server:
   address: 0.0.0.0
 
 lavalink:
-  # plugins:
-  #   dir: "./mahadi/balu/plugins/"
+  plugins:
+    dir: "./plugins/"
   server:
     socketTimeout: 30000
     connectionTimeout: 10000
     password: "youshallnotpass"
     sources:
-      youtube: false
+      youtube: true
       soundcloud: true
       bandcamp: false
       http: true
     playerUpdateInterval: 1
-    youtubeSearchEnabled: false
+    youtubeSearchEnabled: true
     soundcloudSearchEnabled: true
     bufferDurationMs: 200
     frameBufferDurationMs: 2000
