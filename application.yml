@@ -6,6 +6,8 @@ lavalink:
   plugins:
     dir: "./mahadi/balu/plugins/"
   server:
+    socketTimeout: 30000
+    connectionTimeout: 10000
     password: "youshallnotpass"
     sources:
       youtube: false
