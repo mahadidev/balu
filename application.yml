@@ -3,8 +3,8 @@ server:
   address: 0.0.0.0
 
 lavalink:
-  plugins:
-    dir: "./mahadi/balu/plugins/"
+  # plugins:
+  #   dir: "./mahadi/balu/plugins/"
   server:
     socketTimeout: 30000
     connectionTimeout: 10000
