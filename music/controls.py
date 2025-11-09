@@ -25,6 +25,9 @@ class MusicControlView(discord.ui.View):
         previous_track = self.music_bot.playlist_manager.get_previous_in_playlist(interaction.guild.id)
         
         if previous_track:
+            # Set manual navigation flag to prevent auto-play
+            self.music_bot.manual_navigation[interaction.guild.id] = True
+            
             # Set flag to indicate we're going backwards
             self.music_bot.track_history.set_going_backwards(interaction.guild.id, True)
             
@@ -77,28 +80,44 @@ class MusicControlView(discord.ui.View):
             await interaction.response.send_message("❌ Nothing is playing", ephemeral=True)
             return
         
-        # Try to get next track from playlist order first
-        next_track = self.music_bot.playlist_manager.get_next_in_playlist(interaction.guild.id)
-        
-        if next_track:
-            # Update position in playlist
-            self.music_bot.playlist_manager.move_to_next_position(interaction.guild.id)
+        # Check if we have a playlist with tracks
+        if self.music_bot.playlist_manager.has_playlist(interaction.guild.id):
+            next_track = self.music_bot.playlist_manager.get_next_in_playlist(interaction.guild.id)
             
-            # Play the next track directly
-            await player.play(next_track)
-            await interaction.response.send_message(f"⏭️ Playing next: **{next_track.title}**", ephemeral=True)
-        else:
-            # Fallback to regular skip behavior
-            next_info = ""
-            if player.queue:
-                next_track = list(player.queue)[0]  # Peek at next track without removing it
-                next_info = f"\n▶️ Next: **{next_track.title}**"
+            if next_track:
+                # Set manual navigation flag to prevent auto-play
+                self.music_bot.manual_navigation[interaction.guild.id] = True
+                
+                # Move to next position (this also returns the track)
+                moved_track = self.music_bot.playlist_manager.move_to_next_position(interaction.guild.id)
+                
+                # Add remaining playlist tracks to queue if queue is empty
+                if not player.queue:
+                    remaining_tracks = self.music_bot.playlist_manager.get_remaining_tracks(interaction.guild.id)
+                    for track in remaining_tracks:
+                        await player.queue.put_wait(track)
+                    print(f"🔄 Repopulated queue with {len(remaining_tracks)} remaining playlist tracks")
+                
+                # Play the next track directly
+                await player.play(next_track)
+                await interaction.response.send_message(f"⏭️ Playing next: **{next_track.title}**", ephemeral=True)
+                return
             else:
-                next_info = "\n📭 Queue is empty after this track"
-            
-            # Skip the current track (works whether playing or paused)
+                # At end of playlist
+                current_pos, total_tracks = self.music_bot.playlist_manager.get_current_position_info(interaction.guild.id)
+                await interaction.response.send_message(f"🏁 End of playlist reached ({current_pos}/{total_tracks})", ephemeral=True)
+                return
+        
+        # Fallback to regular skip behavior when no playlist
+        if player.queue:
+            # There are tracks in queue - use regular skip
+            next_track = list(player.queue)[0]  # Peek at next track without removing it
             await player.skip(force=True)
-            await interaction.response.send_message(f"⏭️ Skipped{next_info}", ephemeral=True)
+            await interaction.response.send_message(f"⏭️ Skipped\n▶️ Next: **{next_track.title}**", ephemeral=True)
+        else:
+            # Queue is empty - just skip current track
+            await player.skip(force=True)
+            await interaction.response.send_message("⏭️ Skipped\n📭 Queue is empty after this track", ephemeral=True)
     
     @discord.ui.button(emoji="⏹️", style=discord.ButtonStyle.primary, row=0)
     async def stop_button(self, interaction: discord.Interaction, _: discord.ui.Button):

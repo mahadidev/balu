@@ -17,6 +17,8 @@ class MusicBot(commands.Cog):
         # Initialize modular components
         self.playlist_manager = PlaylistManager()
         self.track_history = TrackHistory()
+        # Track manual navigation to prevent auto-play interference
+        self.manual_navigation = {}  # guild_id -> bool
         
     async def setup_hook(self):
         """Connect to Lavalink server"""
@@ -48,7 +50,7 @@ class MusicBot(commands.Cog):
         if not going_backwards:
             self.track_history.add_to_history(player.guild.id, track)
             
-            # Update playlist position if this track is in the playlist
+            # Update playlist position for tracking
             self.playlist_manager.update_playlist_position(player.guild.id, track)
         else:
             # Reset the backwards flag
@@ -63,11 +65,12 @@ class MusicBot(commands.Cog):
         if track.artwork:
             embed.set_thumbnail(url=track.artwork)
         
+        # Row 1: Duration, Source, Volume
         embed.add_field(name="⏱️ Duration", value=self.format_time(track.length), inline=True)
-        embed.add_field(name="📺 Source", value=track.source, inline=True)
-        embed.add_field(name="🎵 Track ID", value=track.identifier[:10] + "..." if hasattr(track, 'identifier') and track.identifier else "N/A", inline=True)
-        # Get the user who requested the track
-        requested_by = getattr(track, 'requester', None) or "Unknown"
+        embed.add_field(name="📺 Source", value=track.source.title(), inline=True)
+        embed.add_field(name="🔊 Volume", value=f"{player.volume}%", inline=True)
+        
+        # Row 2: Requested By, Position (and empty field to complete the row)
         if hasattr(track, 'requester') and track.requester:
             embed.add_field(name="🎧 Requested By", value=track.requester.mention, inline=True)
         else:
@@ -80,7 +83,8 @@ class MusicBot(commands.Cog):
         else:
             embed.add_field(name="📊 Position", value="1/1" if not player.queue else f"1/{len(player.queue) + 1}", inline=True)
         
-        embed.add_field(name="🔊 Volume", value=f"{player.volume}%", inline=True)
+        # Empty field to complete the row of 3
+        embed.add_field(name="​", value="​", inline=True)
         
         # Don't send controls from track start event - only from play commands
         # This prevents duplicate controls when playing playlists
@@ -91,6 +95,14 @@ class MusicBot(commands.Cog):
         """Called when a track ends"""
         player: wavelink.Player | None = payload.player
         if not player:
+            return
+        
+        # Check if manual navigation is active (skip auto-play)
+        if self.manual_navigation.get(player.guild.id, False):
+            print(f"🎯 Skipping auto-play - manual navigation mode active")
+            # Reset manual navigation flag
+            self.manual_navigation[player.guild.id] = False
+            # Don't auto-play next track when manually navigating
             return
         
         # Check if repeat mode is enabled for current track
@@ -108,19 +120,40 @@ class MusicBot(commands.Cog):
             try:
                 next_track = await player.queue.get_wait()
                 
-                # Mark this track as auto-played from queue/playlist
-                next_track.from_playlist_auto = True
+                # Update playlist position BEFORE playing (for proper tracking)
+                if self.playlist_manager.has_playlist(player.guild.id):
+                    self.playlist_manager.move_to_next_position(player.guild.id)
+                    print(f"🎯 Moving to next position in playlist")
                 
+                # Play the next track
                 await player.play(next_track)
-                
-                # Update playlist position for the next track
-                self.playlist_manager.update_playlist_position(player.guild.id, next_track)
                 
                 print(f"✅ Auto-playing next track: {next_track.title}")
             except Exception as e:
                 print(f"❌ Failed to play next track: {e}")
         else:
-            # If queue is empty, disconnect after a delay
+            # Check if we have a playlist and can move to the next track
+            if self.playlist_manager.has_playlist(player.guild.id):
+                next_playlist_track = self.playlist_manager.get_next_in_playlist(player.guild.id)
+                if next_playlist_track:
+                    try:
+                        # Update playlist position
+                        self.playlist_manager.move_to_next_position(player.guild.id)
+                        
+                        # Repopulate queue with remaining playlist tracks
+                        remaining_tracks = self.playlist_manager.get_remaining_tracks(player.guild.id)
+                        for track in remaining_tracks:
+                            await player.queue.put_wait(track)
+                        print(f"🔄 Repopulated queue with {len(remaining_tracks)} remaining playlist tracks")
+                        
+                        # Play the next track from playlist
+                        await player.play(next_playlist_track)
+                        print(f"✅ Auto-playing next playlist track: {next_playlist_track.title}")
+                        return
+                    except Exception as e:
+                        print(f"❌ Failed to play next playlist track: {e}")
+            
+            # If no queue and no playlist tracks, disconnect after a delay
             await asyncio.sleep(300)  # Wait 5 minutes
             if not player.queue and not player.playing:
                 await player.disconnect()
@@ -260,13 +293,19 @@ class MusicBot(commands.Cog):
                     
                     # Create the now playing embed with playlist info
                     embed = discord.Embed(title=f"**{first_track.title}**", description=f"by {first_track.author}", color=0x1DB954)
-                    embed.add_field(name="⏱️ Duration", value=f"{first_track.length // 60000}:{(first_track.length % 60000) // 1000:02d}", inline=True)
+                    
+                    # Row 1: Duration, Source, Volume
+                    embed.add_field(name="⏱️ Duration", value=self.format_time(first_track.length), inline=True)
                     embed.add_field(name="📺 Source", value="YouTube", inline=True)
-                    embed.add_field(name="🎧 Requested By", value=interaction.user.mention, inline=True)
-                    if len(tracks) > 1:
-                        embed.add_field(name="🎶 Playlist", value=f"**{len(tracks)-1} tracks** added to queue", inline=False)
-                    embed.add_field(name="📊 Position", value=f"1/{len(tracks)}", inline=True)
                     embed.add_field(name="🔊 Volume", value=f"{player.volume}%", inline=True)
+                    
+                    # Row 2: Requested By, Position, Playlist Info
+                    embed.add_field(name="🎧 Requested By", value=interaction.user.mention, inline=True)
+                    embed.add_field(name="📊 Position", value=f"1/{len(tracks)}", inline=True)
+                    if len(tracks) > 1:
+                        embed.add_field(name="🎶 Playlist", value=f"{len(tracks)-1} in queue", inline=True)
+                    else:
+                        embed.add_field(name="​", value="​", inline=True)
                     
                     # Add control buttons - send only once here
                     view = MusicControlView(self, interaction.guild_id)
@@ -286,11 +325,16 @@ class MusicBot(commands.Cog):
                     
                     # Send controls for single track
                     embed = discord.Embed(title=f"**{track.title}**", description=f"by {track.author}", color=0x1DB954)
-                    embed.add_field(name="⏱️ Duration", value=f"{track.length // 60000}:{(track.length % 60000) // 1000:02d}", inline=True)
+                    
+                    # Row 1: Duration, Source, Volume
+                    embed.add_field(name="⏱️ Duration", value=self.format_time(track.length), inline=True)
                     embed.add_field(name="📺 Source", value="YouTube", inline=True)
+                    embed.add_field(name="🔊 Volume", value=f"{player.volume}%", inline=True)
+                    
+                    # Row 2: Requested By, Position, Empty field
                     embed.add_field(name="🎧 Requested By", value=interaction.user.mention, inline=True)
                     embed.add_field(name="📊 Position", value="1/1", inline=True)
-                    embed.add_field(name="🔊 Volume", value=f"{player.volume}%", inline=True)
+                    embed.add_field(name="​", value="​", inline=True)
                     
                     if track.artwork:
                         embed.set_thumbnail(url=track.artwork)
@@ -540,12 +584,16 @@ class MusicBot(commands.Cog):
                     
                     # Create embed with controls for playlist
                     embed = discord.Embed(title=f"**{first_track.title}**", description=f"by {first_track.author}", color=0x1DB954)
-                    embed.add_field(name="⏱️ Duration", value=f"{first_track.length // 60000}:{(first_track.length % 60000) // 1000:02d}", inline=True)
+                    
+                    # Row 1: Duration, Source, Volume
+                    embed.add_field(name="⏱️ Duration", value=self.format_time(first_track.length), inline=True)
                     embed.add_field(name="📺 Source", value="YouTube", inline=True)
-                    embed.add_field(name="🎧 Requested By", value=ctx.author.mention, inline=True)
-                    embed.add_field(name="🎶 Playlist", value=f"**{len(tracks)-1} tracks** added to queue", inline=False)
-                    embed.add_field(name="📊 Position", value=f"1/{len(tracks)}", inline=True)
                     embed.add_field(name="🔊 Volume", value=f"{player.volume}%", inline=True)
+                    
+                    # Row 2: Requested By, Position, Playlist Info
+                    embed.add_field(name="🎧 Requested By", value=ctx.author.mention, inline=True)
+                    embed.add_field(name="📊 Position", value=f"1/{len(tracks)}", inline=True)
+                    embed.add_field(name="🎶 Playlist", value=f"{len(tracks)-1} in queue", inline=True)
                     
                     if first_track.artwork:
                         embed.set_thumbnail(url=first_track.artwork)
@@ -567,11 +615,16 @@ class MusicBot(commands.Cog):
                     
                     # Send controls for single track
                     embed = discord.Embed(title=f"**{track.title}**", description=f"by {track.author}", color=0x1DB954)
-                    embed.add_field(name="⏱️ Duration", value=f"{track.length // 60000}:{(track.length % 60000) // 1000:02d}", inline=True)
+                    
+                    # Row 1: Duration, Source, Volume
+                    embed.add_field(name="⏱️ Duration", value=self.format_time(track.length), inline=True)
                     embed.add_field(name="📺 Source", value="YouTube", inline=True)
+                    embed.add_field(name="🔊 Volume", value=f"{player.volume}%", inline=True)
+                    
+                    # Row 2: Requested By, Position, Empty field
                     embed.add_field(name="🎧 Requested By", value=ctx.author.mention, inline=True)
                     embed.add_field(name="📊 Position", value="1/1", inline=True)
-                    embed.add_field(name="🔊 Volume", value=f"{player.volume}%", inline=True)
+                    embed.add_field(name="​", value="​", inline=True)
                     
                     if track.artwork:
                         embed.set_thumbnail(url=track.artwork)
