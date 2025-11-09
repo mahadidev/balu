@@ -21,13 +21,8 @@ class MusicBot(commands.Cog):
         self.manual_navigation = {}  # guild_id -> bool
         
     async def setup_hook(self):
-        """Connect to Lavalink server"""
-        try:
-            nodes = [wavelink.Node(uri="http://127.0.0.1:2333", password="youshallnotpass")]
-            await wavelink.Pool.connect(nodes=nodes, client=self.bot, cache_capacity=100)
-            print("✅ Connected to Lavalink server")
-        except Exception as e:
-            print(f"❌ Failed to connect to Lavalink: {e}")
+        """Player setup - Wavelink connection handled in main.py"""
+        print("🎵 Music player cog loaded")
     
     @commands.Cog.listener()
     async def on_wavelink_node_ready(self, payload: wavelink.NodeReadyEventPayload):
