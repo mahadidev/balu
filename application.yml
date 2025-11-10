@@ -6,7 +6,7 @@ lavalink:
   plugins:
     - dependency: "dev.lavalink.youtube:youtube-plugin:1.7.2"
       repository: "https://maven.lavalink.dev/releases"
-    dir: "./mahadi/balu/plugins/"
+  pluginsDir: "./mahadi/balu/plugins/"
   server:
     socketTimeout: 30000
     connectionTimeout: 10000
