@@ -9,6 +9,8 @@ plugins:
 #    another_key: another_value
 lavalink:
   plugins:
+      youtube:
+        enable: true
       soundcloud: 
         enable: true
   pluginsDir: "./plugins" # optional, defaults to "./plugins"
@@ -49,20 +51,20 @@ lavalink:
     youtubeSearchEnabled: false
     soundcloudSearchEnabled: true
     gc-warnings: true
-    #ratelimit:
-      #ipBlocks: ["1.0.0.0/8", "..."] # list of ip blocks
-      #excludedIps: ["...", "..."] # ips which should be explicit excluded from usage by lavalink
-      #strategy: "RotateOnBan" # RotateOnBan | LoadBalance | NanoSwitch | RotatingNanoSwitch
-      #searchTriggersFail: true # Whether a search 429 should trigger marking the ip as failing
-      #retryLimit: -1 # -1 = use default lavaplayer value | 0 = infinity | >0 = retry will happen this numbers times
-    #youtubeConfig: # Required for avoiding all age restrictions by YouTube, some restricted videos still can be played without.
-      #email: "" # Email of Google account
-      #password: "" # Password of Google account
-    #httpConfig: # Useful for blocking bad-actors from ip-grabbing your music node and attacking it, this way only the http proxy will be attacked
-      #proxyHost: "localhost" # Hostname of the proxy, (ip or domain)
-      #proxyPort: 3128 # Proxy port, 3128 is the default for squidProxy
-      #proxyUser: "" # Optional user for basic authentication fields, leave blank if you don't use basic auth
-      #proxyPassword: "" # Password for basic authentication
+    ratelimit:
+      ipBlocks: ["1.0.0.0/8", "..."] # list of ip blocks
+      excludedIps: ["...", "..."] # ips which should be explicit excluded from usage by lavalink
+      strategy: "RotateOnBan" # RotateOnBan | LoadBalance | NanoSwitch | RotatingNanoSwitch
+      searchTriggersFail: true # Whether a search 429 should trigger marking the ip as failing
+      retryLimit: -1 # -1 = use default lavaplayer value | 0 = infinity | >0 = retry will happen this numbers times
+    youtubeConfig: # Required for avoiding all age restrictions by YouTube, some restricted videos still can be played without.
+      email: "mahadi.dev.pm@gmail.com" # Email of Google account
+      password: "gdmn whgs mrnw dzqb" # Password of Google account
+    httpConfig: # Useful for blocking bad-actors from ip-grabbing your music node and attacking it, this way only the http proxy will be attacked
+      proxyHost: "localhost" # Hostname of the proxy, (ip or domain)
+      proxyPort: 3128 # Proxy port, 3128 is the default for squidProxy
+      proxyUser: "" # Optional user for basic authentication fields, leave blank if you don't use basic auth
+      proxyPassword: "" # Password for basic authentication
     timeouts:
       connectTimeoutMs: 3000
       connectionRequestTimeoutMs: 3000
