@@ -4,7 +4,7 @@ server:
 
 lavalink:
   plugins:
-    - dependency: "dev.lavalink.youtube:youtube-plugin:1.7.2"
+    - dependency: "dev.lavalink.youtube:youtube-plugin:1.16.0"
       repository: "https://maven.lavalink.dev/releases"
   pluginsDir: "./mahadi/balu/plugins/"
   server:

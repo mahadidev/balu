@@ -98,28 +98,16 @@ async def on_ready():
         for cmd in all_commands:
             print(f'  - {cmd.name}: {cmd.description}')
         
-        synced = await asyncio.wait_for(bot.tree.sync(), timeout=60.0)
+        synced = await asyncio.wait_for(bot.tree.sync(), timeout=120.0)
         print(f'✅ Synced {len(synced)} slash commands')
         for cmd in synced:
             print(f'  ✓ /{cmd.name}: {cmd.description}')
     except discord.HTTPException as e:
         if e.status == 400 and "Entry Point command" in str(e):
-            print('⚠️ Entry Point command detected, attempting individual sync...')
-            try:
-                # Try syncing without clearing commands
-                synced = await asyncio.wait_for(bot.tree.sync(), timeout=30.0)
-                print(f'✅ Synced {len(synced)} slash commands')
-                for cmd in synced:
-                    print(f'  - /{cmd.name}: {cmd.description}')
-            except Exception as retry_e:
-                print(f'❌ Failed to sync commands on retry: {retry_e}')
-                print(f'❌ Error type: {type(retry_e).__name__}')
-                if hasattr(retry_e, 'status'):
-                    print(f'❌ HTTP status: {retry_e.status}')
-                if hasattr(retry_e, 'response'):
-                    print(f'❌ Response: {retry_e.response}')
-                import traceback
-                traceback.print_exc()
+            print('⚠️ Entry Point command detected, skipping sync to avoid conflicts...')
+            print('ℹ️ Commands are already registered with Discord. Bot will continue without sync.')
+            # Don't attempt retry for Entry Point errors as they cause timeouts
+            return
         else:
             print(f'❌ Failed to sync commands: {e}')
             # Try guild-specific sync as last resort
@@ -131,7 +119,9 @@ async def on_ready():
             except Exception as guild_e:
                 print(f'❌ Guild sync also failed: {guild_e}')
     except asyncio.TimeoutError:
-        print('⏰ Slash command sync timed out, continuing without sync...')
+        print('⏰ Slash command sync timed out after 2 minutes...')
+        print('ℹ️ This usually means Discord is experiencing high load or rate limiting.')
+        print('ℹ️ Bot will continue running. Commands may still work if previously registered.')
     except Exception as e:
         print(f'❌ Failed to sync commands: {e}')
     

@@ -195,32 +195,45 @@ class MusicBot(commands.Cog):
         return player
 
     async def search_tracks(self, query: str) -> list[wavelink.Playable]:
-        """Search for tracks using YouTube only"""
+        """Search for tracks using the new YouTube plugin"""
+        
+        print(f"🔍 Starting search for: '{query}'")
         
         # If it's a URL, search directly
         if query.startswith(('http://', 'https://')):
-            tracks = await wavelink.Playable.search(query)
-            if tracks:
-                return tracks
+            try:
+                print(f"🌐 Searching URL: {query}")
+                tracks = await wavelink.Playable.search(query)
+                if tracks:
+                    print(f"✅ Found {len(tracks)} tracks from URL")
+                    return tracks
+                else:
+                    print(f"⚠️ URL search returned empty results")
+            except Exception as e:
+                print(f"❌ URL search failed: {type(e).__name__}: {e}")
         
-        # Only use YouTube
-        try:
-            tracks = await wavelink.Playable.search(query, source=wavelink.TrackSource.YouTube)
-            if tracks:
-                print(f"✅ Found tracks using YouTube")
-                return tracks
-        except Exception as e:
-            print(f"❌ YouTube search failed: {e}")
+        # Try different search approaches for text queries
+        search_approaches = [
+            f"ytsearch:{query}",
+            f"ytmsearch:{query}", 
+            query,
+            f"youtube:{query}",
+            f"yt:{query}"
+        ]
         
-        # Try YouTube Music as backup
-        try:
-            tracks = await wavelink.Playable.search(query, source=wavelink.TrackSource.YouTubeMusic)
-            if tracks:
-                print(f"✅ Found tracks using YouTube Music")
-                return tracks
-        except Exception as e:
-            print(f"❌ YouTube Music search failed: {e}")
+        for i, search_query in enumerate(search_approaches, 1):
+            try:
+                print(f"🔍 Attempt {i}: Searching with '{search_query}'")
+                tracks = await wavelink.Playable.search(search_query)
+                if tracks:
+                    print(f"✅ Found {len(tracks)} tracks using approach {i}: '{search_query}'")
+                    return tracks
+                else:
+                    print(f"⚠️ Approach {i} returned empty results")
+            except Exception as e:
+                print(f"❌ Approach {i} failed: {type(e).__name__}: {e}")
         
+        print(f"❌ All search approaches failed for: '{query}'")
         return []
 
     @discord.app_commands.command(name="play", description="Play a song")
