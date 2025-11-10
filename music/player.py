@@ -213,19 +213,33 @@ class MusicBot(commands.Cog):
         return player
 
     async def search_tracks(self, query: str) -> list[wavelink.Playable]:
-        """Search for tracks using SoundCloud only"""
+        """Search for tracks using YouTube and SoundCloud"""
         
-        # If it's a SoundCloud URL, search directly
-        if query.startswith(('http://', 'https://')) and 'soundcloud.com' in query:
+        # If it's a URL, search directly
+        if query.startswith(('http://', 'https://')):
             tracks = await wavelink.Playable.search(query)
             if tracks:
                 return tracks
-        elif query.startswith(('http://', 'https://')):
-            # Block non-SoundCloud URLs
-            print(f"❌ Only SoundCloud URLs are allowed")
-            return []
         
-        # Only use SoundCloud for searches
+        # Try YouTube first
+        try:
+            tracks = await wavelink.Playable.search(query, source=wavelink.TrackSource.YouTube)
+            if tracks:
+                print(f"✅ Found tracks using YouTube")
+                return tracks
+        except Exception as e:
+            print(f"❌ YouTube search failed: {e}")
+        
+        # Try YouTube Music as backup
+        try:
+            tracks = await wavelink.Playable.search(query, source=wavelink.TrackSource.YouTubeMusic)
+            if tracks:
+                print(f"✅ Found tracks using YouTube Music")
+                return tracks
+        except Exception as e:
+            print(f"❌ YouTube Music search failed: {e}")
+        
+        # Try SoundCloud as final backup
         try:
             tracks = await wavelink.Playable.search(query, source=wavelink.TrackSource.SoundCloud)
             if tracks:
