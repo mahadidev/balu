@@ -80,7 +80,8 @@ class MusicBot(commands.Cog):
         
         # Row 1: Duration, Source, Volume
         embed.add_field(name="⏱️ Duration", value=self.format_time(track.length), inline=True)
-        embed.add_field(name="📺 Source", value=track.source.title(), inline=True)
+        source_display = getattr(track, 'search_source', track.source.title() if track.source else 'Unknown')
+        embed.add_field(name="📺 Source", value=source_display, inline=True)
         embed.add_field(name="🔊 Volume", value=f"{player.volume}%", inline=True)
         
         # Row 2: Requested By, Position (and empty field to complete the row)
@@ -213,40 +214,67 @@ class MusicBot(commands.Cog):
         return player
 
     async def search_tracks(self, query: str) -> list[wavelink.Playable]:
-        """Search for tracks using YouTube and SoundCloud"""
+        """Search for tracks using LavaSrc provider priority: Spotify -> SoundCloud -> YouTube"""
         
         # If it's a URL, search directly
         if query.startswith(('http://', 'https://')):
             tracks = await wavelink.Playable.search(query)
             if tracks:
+                # Add search source info for URLs
+                for track in tracks:
+                    if hasattr(track, 'uri') and track.uri:
+                        if 'spotify.com' in track.uri:
+                            track.search_source = "Spotify"
+                        elif 'soundcloud.com' in track.uri:
+                            track.search_source = "SoundCloud"
+                        elif 'youtube.com' in track.uri or 'youtu.be' in track.uri:
+                            track.search_source = "YouTube"
+                        else:
+                            track.search_source = "URL"
                 return tracks
         
-        # Try YouTube first
+        # Use LavaSrc provider order: Spotify first, then SoundCloud, then YouTube
+        # LavaSrc will handle the priority automatically based on our configuration
+        try:
+            tracks = await wavelink.Playable.search(query)  # Let LavaSrc handle the search order
+            if tracks:
+                # Determine which source was used and add custom attribute
+                search_source = "YouTube"  # Default assumption
+                
+                # Check if this was likely found via Spotify by analyzing track properties
+                for track in tracks:
+                    # Check various properties to determine the search source
+                    if hasattr(track, 'uri') and track.uri:
+                        if 'spotify:' in track.uri or 'spotify.com' in track.uri:
+                            search_source = "Spotify"
+                        elif 'soundcloud.com' in track.uri:
+                            search_source = "SoundCloud"
+                    elif hasattr(track, 'identifier') and track.identifier:
+                        # Check if identifier looks like Spotify format
+                        if track.identifier.startswith('sp'):
+                            search_source = "Spotify"
+                        elif track.identifier.startswith('sc'):
+                            search_source = "SoundCloud"
+                    
+                    # Add custom attribute to store the search source
+                    track.search_source = search_source
+                
+                print(f"✅ Found tracks using {search_source} (streaming via {tracks[0].source.title() if tracks[0].source else 'Unknown'})")
+                return tracks
+        except Exception as e:
+            print(f"❌ LavaSrc search failed: {e}")
+        
+        # Fallback to traditional YouTube search if LavaSrc fails
         try:
             tracks = await wavelink.Playable.search(query, source=wavelink.TrackSource.YouTube)
             if tracks:
-                print(f"✅ Found tracks using YouTube")
+                # Add search source info for fallback
+                for track in tracks:
+                    track.search_source = "YouTube (Fallback)"
+                print(f"✅ Found tracks using YouTube (fallback)")
                 return tracks
         except Exception as e:
-            print(f"❌ YouTube search failed: {e}")
-        
-        # Try YouTube Music as backup
-        try:
-            tracks = await wavelink.Playable.search(query, source=wavelink.TrackSource.YouTubeMusic)
-            if tracks:
-                print(f"✅ Found tracks using YouTube Music")
-                return tracks
-        except Exception as e:
-            print(f"❌ YouTube Music search failed: {e}")
-        
-        # Try SoundCloud as final backup
-        try:
-            tracks = await wavelink.Playable.search(query, source=wavelink.TrackSource.SoundCloud)
-            if tracks:
-                print(f"✅ Found tracks using SoundCloud")
-                return tracks
-        except Exception as e:
-            print(f"❌ SoundCloud search failed: {e}")
+            print(f"❌ YouTube fallback search failed: {e}")
         
         return []
 
@@ -318,7 +346,8 @@ class MusicBot(commands.Cog):
                     
                     # Row 1: Duration, Source, Volume
                     embed.add_field(name="⏱️ Duration", value=self.format_time(first_track.length), inline=True)
-                    embed.add_field(name="📺 Source", value=first_track.source.title(), inline=True)
+                    source_display = getattr(first_track, 'search_source', first_track.source.title() if first_track.source else 'Unknown')
+                    embed.add_field(name="📺 Source", value=source_display, inline=True)
                     embed.add_field(name="🔊 Volume", value=f"{player.volume}%", inline=True)
                     
                     # Row 2: Requested By, Position, Playlist Info
@@ -350,7 +379,8 @@ class MusicBot(commands.Cog):
                     
                     # Row 1: Duration, Source, Volume
                     embed.add_field(name="⏱️ Duration", value=self.format_time(track.length), inline=True)
-                    embed.add_field(name="📺 Source", value=track.source.title(), inline=True)
+                    source_display = getattr(track, 'search_source', track.source.title() if track.source else 'Unknown')
+                    embed.add_field(name="📺 Source", value=source_display, inline=True)
                     embed.add_field(name="🔊 Volume", value=f"{player.volume}%", inline=True)
                     
                     # Row 2: Requested By, Position, Empty field
@@ -617,7 +647,8 @@ class MusicBot(commands.Cog):
                     
                     # Row 1: Duration, Source, Volume
                     embed.add_field(name="⏱️ Duration", value=self.format_time(first_track.length), inline=True)
-                    embed.add_field(name="📺 Source", value=first_track.source.title(), inline=True)
+                    source_display = getattr(first_track, 'search_source', first_track.source.title() if first_track.source else 'Unknown')
+                    embed.add_field(name="📺 Source", value=source_display, inline=True)
                     embed.add_field(name="🔊 Volume", value=f"{player.volume}%", inline=True)
                     
                     # Row 2: Requested By, Position, Playlist Info
@@ -648,7 +679,8 @@ class MusicBot(commands.Cog):
                     
                     # Row 1: Duration, Source, Volume
                     embed.add_field(name="⏱️ Duration", value=self.format_time(track.length), inline=True)
-                    embed.add_field(name="📺 Source", value=track.source.title(), inline=True)
+                    source_display = getattr(track, 'search_source', track.source.title() if track.source else 'Unknown')
+                    embed.add_field(name="📺 Source", value=source_display, inline=True)
                     embed.add_field(name="🔊 Volume", value=f"{player.volume}%", inline=True)
                     
                     # Row 2: Requested By, Position, Empty field

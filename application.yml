@@ -4,6 +4,17 @@ server: # REST and WS server
   http2:
     enabled: false # Whether to enable HTTP/2 support
 plugins:
+  lavasrc:
+    providers: # Search priority order: Spotify first, then SoundCloud, then YouTube
+      - "spsearch:%QUERY%" # Spotify - First priority
+      - "scsearch:%QUERY%" # SoundCloud - Second priority
+      - "ytsearch:%QUERY%" # YouTube - Third priority
+    sources:
+      spotify: true # Enable Spotify source
+    spotify:
+      clientId: "472b822c5ecd430cbd585efe24943890" # Your Spotify Client ID
+      clientSecret: "ccf17fecc39e4ca1a93134daa69ae4f3" # Your Spotify Client Secret
+      countryCode: "BD" # Country code for Spotify
 #  name: # Name of the plugin
 #    some_key: some_value # Some key-value pair for the plugin
 #    another_key: another_value
@@ -11,6 +22,9 @@ lavalink:
   plugins:
     - dependency: "dev.lavalink.youtube:youtube-plugin:1.16.0" # YouTube plugin for Lavalink
       repository: "https://maven.lavalink.dev/releases" # Lavalink releases repository
+      snapshot: false # Use stable release version
+    - dependency: "com.github.topi314.lavasrc:lavasrc-plugin:4.8.1" # LavaSrc plugin for Spotify, Apple Music, Deezer
+      repository: "https://maven.topi.wtf/releases" # LavaSrc repository
       snapshot: false # Use stable release version
       youtube:
         enabled: true
