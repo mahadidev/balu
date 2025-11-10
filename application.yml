@@ -3,12 +3,15 @@ server:
   address: 0.0.0.0
 
 lavalink:
+  plugins:
+    - dependency: "dev.lavalink.youtube:youtube-plugin:1.16.0"
+      repository: "https://maven.lavalink.dev/releases"
   server:
     socketTimeout: 30000
     connectionTimeout: 10000
     password: "youshallnotpass"
     sources:
-      youtube: true
+      youtube: false
       soundcloud: true
       bandcamp: false
       http: true
@@ -21,13 +24,6 @@ lavalink:
     resamplingQuality: HIGH
     trackStuckThresholdMs: 10000
     useSeekGhosting: true
-    
-    #ratelimit:
-      #ipBlocks: ["1.0.0.0/8", "..."] # list of ip blocks
-      #excludedIps: ["...", "..."] # ips which should be explicit excluded from usage by lavalink
-      #strategy: "RotateOnBan" # RotateOnBan | LoadBalance | NanoSwitch | RotatingNanoSwitch
-      #searchTriggersFail: true # Whether a search 429 should trigger marking the ip as failing
-      #retryLimit: -1 # -1 = use default lavaplayer value | 0 = infinity | >0 = retry will happen this numbers times
 
 metrics:
   prometheus:
@@ -62,3 +58,12 @@ logging:
     rollingpolicy:
       max-file-size: 1GB
       max-history: 1
+
+plugins:
+  youtube:
+    enabled: true
+    clients:
+      - MUSIC
+      - WEB
+      - ANDROID_VR
+      - WEBEMBEDDED
