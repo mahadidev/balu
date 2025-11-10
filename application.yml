@@ -9,10 +9,8 @@ plugins:
 #    another_key: another_value
 lavalink:
   plugins:
-    youtube:
-      remoteCipher:
-        url: "https://cipher.kikkia.dev/"
-        userAgent: "your_service_name" # Optional
+      soundcloud: 
+        enable: true
   pluginsDir: "./plugins" # optional, defaults to "./plugins"
   defaultPluginRepository: "https://maven.lavalink.dev/releases" # optional, defaults to the Lavalink release repository
   defaultPluginSnapshotRepository: "https://maven.lavalink.dev/snapshots" # optional, defaults to the Lavalink snapshot repository
@@ -21,12 +19,12 @@ lavalink:
     sources:
       # The default Youtube source is now deprecated and won't receive further updates. Please use https://github.com/lavalink-devs/youtube-source#plugin instead.
       youtube: false
-      bandcamp: true
+      bandcamp: false
       soundcloud: true
-      twitch: true
-      vimeo: true
-      nico: true
-      http: true # warning: keeping HTTP enabled without a proxy configured could expose your server's IP address.
+      twitch: false
+      vimeo: false
+      nico: false
+      http: false # warning: keeping HTTP enabled without a proxy configured could expose your server's IP address.
       local: false
     filters: # All filters are enabled by default
       volume: true
@@ -48,7 +46,7 @@ lavalink:
     useSeekGhosting: true # Seek ghosting is the effect where whilst a seek is in progress, the audio buffer is read from until empty, or until seek is ready.
     youtubePlaylistLoadLimit: 6 # Number of pages at 100 each
     playerUpdateInterval: 5 # How frequently to send player updates to clients, in seconds
-    youtubeSearchEnabled: true
+    youtubeSearchEnabled: false
     soundcloudSearchEnabled: true
     gc-warnings: true
     #ratelimit:

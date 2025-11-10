@@ -213,31 +213,26 @@ class MusicBot(commands.Cog):
         return player
 
     async def search_tracks(self, query: str) -> list[wavelink.Playable]:
-        """Search for tracks using YouTube only"""
+        """Search for tracks using SoundCloud only"""
         
-        # If it's a URL, search directly
-        if query.startswith(('http://', 'https://')):
+        # If it's a SoundCloud URL, search directly
+        if query.startswith(('http://', 'https://')) and 'soundcloud.com' in query:
             tracks = await wavelink.Playable.search(query)
             if tracks:
                 return tracks
+        elif query.startswith(('http://', 'https://')):
+            # Block non-SoundCloud URLs
+            print(f"❌ Only SoundCloud URLs are allowed")
+            return []
         
-        # Only use YouTube
+        # Only use SoundCloud for searches
         try:
-            tracks = await wavelink.Playable.search(query, source=wavelink.TrackSource.YouTube)
+            tracks = await wavelink.Playable.search(query, source=wavelink.TrackSource.SoundCloud)
             if tracks:
-                print(f"✅ Found tracks using YouTube")
+                print(f"✅ Found tracks using SoundCloud")
                 return tracks
         except Exception as e:
-            print(f"❌ YouTube search failed: {e}")
-        
-        # Try YouTube Music as backup
-        try:
-            tracks = await wavelink.Playable.search(query, source=wavelink.TrackSource.YouTubeMusic)
-            if tracks:
-                print(f"✅ Found tracks using YouTube Music")
-                return tracks
-        except Exception as e:
-            print(f"❌ YouTube Music search failed: {e}")
+            print(f"❌ SoundCloud search failed: {e}")
         
         return []
 
@@ -309,7 +304,7 @@ class MusicBot(commands.Cog):
                     
                     # Row 1: Duration, Source, Volume
                     embed.add_field(name="⏱️ Duration", value=self.format_time(first_track.length), inline=True)
-                    embed.add_field(name="📺 Source", value="YouTube", inline=True)
+                    embed.add_field(name="📺 Source", value=first_track.source.title(), inline=True)
                     embed.add_field(name="🔊 Volume", value=f"{player.volume}%", inline=True)
                     
                     # Row 2: Requested By, Position, Playlist Info
@@ -341,7 +336,7 @@ class MusicBot(commands.Cog):
                     
                     # Row 1: Duration, Source, Volume
                     embed.add_field(name="⏱️ Duration", value=self.format_time(track.length), inline=True)
-                    embed.add_field(name="📺 Source", value="YouTube", inline=True)
+                    embed.add_field(name="📺 Source", value=track.source.title(), inline=True)
                     embed.add_field(name="🔊 Volume", value=f"{player.volume}%", inline=True)
                     
                     # Row 2: Requested By, Position, Empty field
@@ -608,7 +603,7 @@ class MusicBot(commands.Cog):
                     
                     # Row 1: Duration, Source, Volume
                     embed.add_field(name="⏱️ Duration", value=self.format_time(first_track.length), inline=True)
-                    embed.add_field(name="📺 Source", value="YouTube", inline=True)
+                    embed.add_field(name="📺 Source", value=first_track.source.title(), inline=True)
                     embed.add_field(name="🔊 Volume", value=f"{player.volume}%", inline=True)
                     
                     # Row 2: Requested By, Position, Playlist Info
@@ -639,7 +634,7 @@ class MusicBot(commands.Cog):
                     
                     # Row 1: Duration, Source, Volume
                     embed.add_field(name="⏱️ Duration", value=self.format_time(track.length), inline=True)
-                    embed.add_field(name="📺 Source", value="YouTube", inline=True)
+                    embed.add_field(name="📺 Source", value=track.source.title(), inline=True)
                     embed.add_field(name="🔊 Volume", value=f"{player.volume}%", inline=True)
                     
                     # Row 2: Requested By, Position, Empty field
