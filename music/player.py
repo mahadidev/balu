@@ -23,7 +23,7 @@ class MusicBot(commands.Cog):
     async def setup_hook(self):
         """Connect to Lavalink server"""
         try:
-            nodes = [wavelink.Node(uri="http://127.0.0.1:2333", password="youshallnotpass")]
+            nodes = [wavelink.Node(uri="http://185.210.144.147:2333", password="youshallnotpass")]
             await wavelink.Pool.connect(nodes=nodes, client=self.bot, cache_capacity=100)
             print("✅ Connected to Lavalink server")
         except Exception as e:
