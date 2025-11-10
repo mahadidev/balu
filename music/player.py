@@ -199,6 +199,15 @@ class MusicBot(commands.Cog):
         
         print(f"🔍 Starting search for: '{query}'")
         
+        # Check available nodes and their info
+        try:
+            nodes = wavelink.Pool.nodes
+            print(f"📊 Available nodes: {len(nodes)}")
+            for node in nodes:
+                print(f"  Node: {node.identifier} | Connected: {node.is_connected()}")
+        except Exception as e:
+            print(f"⚠️ Failed to get node info: {e}")
+        
         # If it's a URL, search directly
         if query.startswith(('http://', 'https://')):
             try:
@@ -218,7 +227,8 @@ class MusicBot(commands.Cog):
             f"ytmsearch:{query}", 
             query,
             f"youtube:{query}",
-            f"yt:{query}"
+            f"yt:{query}",
+            f"scsearch:{query}"  # Try SoundCloud as test
         ]
         
         for i, search_query in enumerate(search_approaches, 1):
