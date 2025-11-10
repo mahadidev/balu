@@ -5,11 +5,10 @@ server: # REST and WS server
     enabled: false # Whether to enable HTTP/2 support
 plugins:
   lavasrc:
-    providers: # Search priority order: Spotify first, then SoundCloud only
-      - "spsearch:%QUERY%" # Spotify - First priority
-      - "scsearch:%QUERY%" # SoundCloud - Second priority
+    providers: # Search priority order: ONLY Spotify
+      - "spsearch:%QUERY%" # Spotify - Only source
     sources:
-      spotify: true # Enable Spotify source
+      spotify: true # Enable Spotify source ONLY
     spotify:
       clientId: "472b822c5ecd430cbd585efe24943890" # Your Spotify Client ID
       clientSecret: "ccf17fecc39e4ca1a93134daa69ae4f3" # Your Spotify Client Secret
@@ -31,7 +30,7 @@ lavalink:
       # The default Youtube source is now deprecated and won't receive further updates. Please use https://github.com/lavalink-devs/youtube-source#plugin instead.
       youtube: false
       bandcamp: false
-      soundcloud: true
+      soundcloud: false
       twitch: false
       vimeo: false
       nico: false
@@ -58,7 +57,7 @@ lavalink:
     youtubePlaylistLoadLimit: 6 # Number of pages at 100 each
     playerUpdateInterval: 5 # How frequently to send player updates to clients, in seconds
     youtubeSearchEnabled: false
-    soundcloudSearchEnabled: true
+    soundcloudSearchEnabled: false
     gc-warnings: true
     ratelimit:
       ipBlocks: [] # list of ip blocks  
