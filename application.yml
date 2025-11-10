@@ -9,34 +9,10 @@ plugins:
 #    another_key: another_value
 lavalink:
   plugins:
-    - dependency: "dev.lavalink.youtube:youtube-plugin:1.16.0" # YouTube plugin for Lavalink
-      repository: "https://maven.lavalink.dev/releases" # Lavalink releases repository
-      snapshot: false # Use stable release version
-      youtube:
-        enabled: true
-        allowSearch: true
-        allowDirectVideoIds: true
-        allowDirectPlaylistIds: true
-        remoteCipher:
-          url: ""
-          password: ""
-        oauth:
-          enabled: true
-          refreshToken: ""
-          skipInitialization: true
-        pot:
-          token: 
-          visitorData: 
-        clients:
-          - "TV"
-          - "TVHTML5EMBEDDED"
-          - "ANDROID_VR"
-          - "WEB"
-          - "MWEB"
-          - "WEBEMBEDDED"
-          - "MUSIC"
-          - "ANDROID_MUSIC"
-          - "IOS"
+    youtube:
+      remoteCipher:
+        url: "https://cipher.kikkia.dev/"
+        userAgent: "your_service_name" # Optional
   pluginsDir: "./plugins" # optional, defaults to "./plugins"
   defaultPluginRepository: "https://maven.lavalink.dev/releases" # optional, defaults to the Lavalink release repository
   defaultPluginSnapshotRepository: "https://maven.lavalink.dev/snapshots" # optional, defaults to the Lavalink snapshot repository
