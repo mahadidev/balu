@@ -4,13 +4,15 @@ server:
 
 lavalink:
   plugins:
-    dir: "./plugins/"
+    - dependency: "dev.lavalink.youtube:youtube-plugin:1.7.2"
+      repository: "https://maven.lavalink.dev/releases"
+    dir: "./mahadi/balu/plugins/"
   server:
     socketTimeout: 30000
     connectionTimeout: 10000
     password: "youshallnotpass"
     sources:
-      youtube: true
+      youtube: false
       soundcloud: true
       bandcamp: false
       http: true
@@ -39,6 +41,14 @@ metrics:
 sentry:
   dsn: ""
   environment: ""
+
+plugins:
+  youtube:
+    clients:
+      - MUSIC
+      - WEB
+      - ANDROID_TESTSUITE
+      - TVHTML5EMBEDDED
 
 logging:
   file:
