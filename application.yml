@@ -19,37 +19,9 @@ plugins:
 #    another_key: another_value
 lavalink:
   plugins:
-    - dependency: "dev.lavalink.youtube:youtube-plugin:1.16.0" # YouTube plugin for Lavalink
-      repository: "https://maven.lavalink.dev/releases" # Lavalink releases repository
-      snapshot: false # Use stable release version
-    - dependency: "com.github.topi314.lavasrc:lavasrc-plugin:4.8.1" # LavaSrc plugin for Spotify, Apple Music, Deezer
+    - dependency: "com.github.topi314.lavasrc:lavasrc-plugin:4.8.1" # LavaSrc plugin for Spotify and SoundCloud
       repository: "https://maven.topi.wtf/releases" # LavaSrc repository
       snapshot: false # Use stable release version
-      youtube:
-        enabled: false
-        allowSearch: true
-        allowDirectVideoIds: true
-        allowDirectPlaylistIds: true
-        remoteCipher:
-          url: ""
-          password: ""
-        oauth:
-          enabled: true
-          refreshToken: ""
-          skipInitialization: true
-        pot:
-          token: 
-          visitorData: 
-        clients:
-          - "TV"
-          - "TVHTML5EMBEDDED"
-          - "ANDROID_VR"
-          - "WEB"
-          - "MWEB"
-          - "WEBEMBEDDED"
-          - "MUSIC"
-          - "ANDROID_MUSIC"
-          - "IOS"
   pluginsDir: "./plugins" # optional, defaults to "./plugins"
   defaultPluginRepository: "https://maven.lavalink.dev/releases" # optional, defaults to the Lavalink release repository
   defaultPluginSnapshotRepository: "https://maven.lavalink.dev/snapshots" # optional, defaults to the Lavalink snapshot repository
@@ -58,12 +30,12 @@ lavalink:
     sources:
       # The default Youtube source is now deprecated and won't receive further updates. Please use https://github.com/lavalink-devs/youtube-source#plugin instead.
       youtube: false
-      bandcamp: true
+      bandcamp: false
       soundcloud: true
-      twitch: true
-      vimeo: true
-      nico: true
-      http: true # warning: keeping HTTP enabled without a proxy configured could expose your server's IP address.
+      twitch: false
+      vimeo: false
+      nico: false
+      http: false # Disabled to prevent IP exposure
       local: false
     filters: # All filters are enabled by default
       volume: true
@@ -85,7 +57,7 @@ lavalink:
     useSeekGhosting: true # Seek ghosting is the effect where whilst a seek is in progress, the audio buffer is read from until empty, or until seek is ready.
     youtubePlaylistLoadLimit: 6 # Number of pages at 100 each
     playerUpdateInterval: 5 # How frequently to send player updates to clients, in seconds
-    youtubeSearchEnabled: true
+    youtubeSearchEnabled: false
     soundcloudSearchEnabled: true
     gc-warnings: true
     ratelimit:
@@ -94,9 +66,9 @@ lavalink:
       strategy: "RotateOnBan" # RotateOnBan | LoadBalance | NanoSwitch | RotatingNanoSwitch
       searchTriggersFail: true # Whether a search 429 should trigger marking the ip as failing
       retryLimit: -1 # -1 = use default lavaplayer value | 0 = infinity | >0 = retry will happen this numbers times
-    youtubeConfig: # Required for avoiding all age restrictions by YouTube, some restricted videos still can be played without.
-      email: "mahadi.dev.pm@gmail.com" # Email of Google account
-      password: "gdmn whgs mrnw dzqb" # Password of Google account
+    # youtubeConfig: # Disabled - YouTube not used
+      # email: "mahadi.dev.pm@gmail.com" # Email of Google account
+      # password: "gdmn whgs mrnw dzqb" # Password of Google account
     #httpConfig: # Useful for blocking bad-actors from ip-grabbing your music node and attacking it, this way only the http proxy will be attacked
       #proxyHost: "localhost" # Hostname of the proxy, (ip or domain)
       #proxyPort: 3128 # Proxy port, 3128 is the default for squidProxy
