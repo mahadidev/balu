@@ -33,7 +33,19 @@ async def setup_hook():
     """Setup hook to connect to Lavalink"""
     print("🔗 Connecting to Lavalink server...")
     try:
-        nodes = [wavelink.Node(uri="http://185.210.144.147:2333", password="youshallnotpass")]
+        # Get Lavalink mode (server or local)
+        lavalink_mode = os.getenv("LAVALINK_MODE", "server").lower()
+        
+        if lavalink_mode == "local":
+            lavalink_uri = os.getenv("LAVALINK_LOCAL_URI", "http://localhost:2333")
+            lavalink_password = os.getenv("LAVALINK_LOCAL_PASSWORD", "youshallnotpass")
+            print(f"🔧 Using LOCAL Lavalink: {lavalink_uri}")
+        else:
+            lavalink_uri = os.getenv("LAVALINK_SERVER_URI", "http://185.210.144.147:2333")
+            lavalink_password = os.getenv("LAVALINK_SERVER_PASSWORD", "youshallnotpass")
+            print(f"🌐 Using SERVER Lavalink: {lavalink_uri}")
+        
+        nodes = [wavelink.Node(uri=lavalink_uri, password=lavalink_password)]
         await wavelink.Pool.connect(nodes=nodes, client=bot, cache_capacity=100)
         print("✅ Connected to Lavalink server")
     except Exception as e:
