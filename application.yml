@@ -3,13 +3,12 @@ server:
   address: 0.0.0.0
 
 lavalink:
-  pluginsDir: "./mahadi/balu/plugins/"
   server:
     socketTimeout: 30000
     connectionTimeout: 10000
     password: "youshallnotpass"
     sources:
-      youtube: false
+      youtube: true
       soundcloud: true
       bandcamp: false
       http: true
@@ -39,13 +38,6 @@ sentry:
   dsn: ""
   environment: ""
 
-plugins:
-  youtube:
-    clients:
-      - MUSIC
-      - WEB
-      - ANDROID_TESTSUITE
-      - TVHTML5EMBEDDED
 
 logging:
   file:
