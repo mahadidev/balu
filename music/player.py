@@ -239,7 +239,7 @@ class MusicBot(commands.Cog):
             tracks = await wavelink.Playable.search(query)  # Let LavaSrc handle the search order
             if tracks:
                 # Determine which source was used and add custom attribute
-                search_source = "YouTube"  # Default assumption
+                search_source = "SoundCloud"  # Default assumption (since YouTube is disabled)
                 
                 # Check if this was likely found via Spotify by analyzing track properties
                 for track in tracks:
@@ -264,17 +264,17 @@ class MusicBot(commands.Cog):
         except Exception as e:
             print(f"❌ LavaSrc search failed: {e}")
         
-        # Fallback to traditional YouTube search if LavaSrc fails
+        # Fallback to SoundCloud search if LavaSrc fails
         try:
-            tracks = await wavelink.Playable.search(query, source=wavelink.TrackSource.YouTube)
+            tracks = await wavelink.Playable.search(query, source=wavelink.TrackSource.SoundCloud)
             if tracks:
                 # Add search source info for fallback
                 for track in tracks:
-                    track.search_source = "YouTube (Fallback)"
-                print(f"✅ Found tracks using YouTube (fallback)")
+                    track.search_source = "SoundCloud (Fallback)"
+                print(f"✅ Found tracks using SoundCloud (fallback)")
                 return tracks
         except Exception as e:
-            print(f"❌ YouTube fallback search failed: {e}")
+            print(f"❌ SoundCloud fallback search failed: {e}")
         
         return []
 

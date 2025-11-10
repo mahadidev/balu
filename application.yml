@@ -5,10 +5,9 @@ server: # REST and WS server
     enabled: false # Whether to enable HTTP/2 support
 plugins:
   lavasrc:
-    providers: # Search priority order: Spotify first, then SoundCloud, then YouTube
+    providers: # Search priority order: Spotify first, then SoundCloud only
       - "spsearch:%QUERY%" # Spotify - First priority
       - "scsearch:%QUERY%" # SoundCloud - Second priority
-      - "ytsearch:%QUERY%" # YouTube - Third priority
     sources:
       spotify: true # Enable Spotify source
     spotify:
@@ -27,7 +26,7 @@ lavalink:
       repository: "https://maven.topi.wtf/releases" # LavaSrc repository
       snapshot: false # Use stable release version
       youtube:
-        enabled: true
+        enabled: false
         allowSearch: true
         allowDirectVideoIds: true
         allowDirectPlaylistIds: true
