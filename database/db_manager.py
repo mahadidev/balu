@@ -111,6 +111,35 @@ class DatabaseManager:
                     pass
             
             conn.commit()
+            
+            # Run migration for reply feature columns if needed
+            self._migrate_reply_feature_columns(cursor, conn)
+    
+    def _migrate_reply_feature_columns(self, cursor, conn):
+        """Add reply feature columns to existing global_chat_messages table if they don't exist"""
+        try:
+            # Check if reply columns exist
+            cursor.execute("PRAGMA table_info(global_chat_messages)")
+            columns = [column[1] for column in cursor.fetchall()]
+            
+            # Add missing columns
+            columns_to_add = [
+                ('reply_to_message_id', 'TEXT'),
+                ('reply_to_username', 'TEXT'),
+                ('reply_to_content', 'TEXT')
+            ]
+            
+            for column_name, column_type in columns_to_add:
+                if column_name not in columns:
+                    print(f"🔄 Adding reply feature column: {column_name}")
+                    cursor.execute(f'''
+                        ALTER TABLE global_chat_messages 
+                        ADD COLUMN {column_name} {column_type}
+                    ''')
+            
+            conn.commit()
+        except sqlite3.Error as e:
+            print(f"⚠️ Reply feature migration error (non-critical): {e}")
     
     def create_chat_room(self, room_name, created_by, max_servers=50):
         """Create a new chat room and return room ID"""
