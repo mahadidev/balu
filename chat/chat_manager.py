@@ -177,81 +177,104 @@ class GlobalChatManager:
                             if original_message.author.bot and original_message.author.id == self.bot.user.id:
                                 # Parse bot's global chat message to extract original content
                                 bot_content = original_message.content
-                                # Look for pattern: "URL • **Username:** actual message" or "URL • @Username**: ** actual message"
                                 print(f"🔍 Bot message content: {bot_content[:100]}...")
                                 
-                                # Try different patterns to extract username and content
-                                if '**: **' in bot_content:
-                                    # Pattern: "URL • @Username**: ** actual message"
-                                    parts = bot_content.split('**: **')
-                                    if len(parts) >= 2:
-                                        # Get the actual message (remove extra formatting)
-                                        actual_message = parts[1].strip().replace('*', '').strip()
-                                        # Extract username from the first part
-                                        first_part = parts[0]
-                                        if '<@' in first_part and '>' in first_part:
-                                            # Handle Discord mention format <@userid>
-                                            import re
-                                            mention_match = re.search(r'<@(\d+)>', first_part)
-                                            if mention_match:
-                                                user_id = mention_match.group(1)
-                                                try:
-                                                    # Try to get the actual username from Discord
-                                                    mentioned_user = self.bot.get_user(int(user_id))
-                                                    if mentioned_user:
-                                                        username_part = mentioned_user.display_name
-                                                    else:
-                                                        # Try to fetch the user
-                                                        mentioned_user = await self.bot.fetch_user(int(user_id))
-                                                        username_part = mentioned_user.display_name if mentioned_user else f"User{user_id}"
-                                                except:
-                                                    username_part = f"User{user_id}"
+                                # Check if this is a reply to a reply (nested reply)
+                                if '┌─' in bot_content and '└─' in bot_content:
+                                    # This is a reply message, extract the last user's message
+                                    print("🔄 Detected reply to reply, extracting last user message...")
+                                    # Split by └─ to get the last user's message
+                                    if '└─' in bot_content:
+                                        last_part = bot_content.split('└─')[-1].split('\n')[0].strip()
+                                        # Extract username and message from "**Username:** message"
+                                        if '**' in last_part and ':**' in last_part:
+                                            username_end = last_part.find(':**')
+                                            if username_end != -1:
+                                                username_start = last_part.find('**') + 2
+                                                reply_data['reply_to_username'] = last_part[username_start:username_end]
+                                                reply_data['reply_to_content'] = last_part[username_end + 3:].strip()
+                                                reply_data['reply_to_message_id'] = str(message.reference.message_id)
+                                                print(f"✅ Extracted from nested reply - User: {reply_data['reply_to_username']}, Content: {reply_data['reply_to_content'][:30]}...")
                                             else:
-                                                username_part = "Someone"
+                                                # Fallback to normal parsing
+                                                reply_data['reply_to_content'] = last_part
+                                                reply_data['reply_to_username'] = "Previous User"
                                         else:
-                                            username_part = first_part.split('**')[-1].strip() if '**' in first_part else "Someone"
-                                        reply_data['reply_to_content'] = actual_message
-                                        reply_data['reply_to_username'] = username_part
-                                        print(f"✅ Extracted - User: {username_part}, Content: {actual_message[:30]}...")
-                                    else:
-                                        reply_data['reply_to_content'] = bot_content
-                                elif '**: ' in bot_content:
-                                    # Pattern: "URL • **Username:** actual message"
-                                    parts = bot_content.split('**: ')
-                                    if len(parts) >= 2:
-                                        actual_message = parts[-1].strip().replace('*', '').strip()
-                                        # Extract username from before the :**
-                                        before_colon = parts[-2]
-                                        if '<@' in before_colon and '>' in before_colon:
-                                            # Handle Discord mention format <@userid>
-                                            import re
-                                            mention_match = re.search(r'<@(\d+)>', before_colon)
-                                            if mention_match:
-                                                user_id = mention_match.group(1)
-                                                try:
-                                                    # Try to get the actual username from Discord
-                                                    mentioned_user = self.bot.get_user(int(user_id))
-                                                    if mentioned_user:
-                                                        username_part = mentioned_user.display_name
-                                                    else:
-                                                        # Try to fetch the user
-                                                        mentioned_user = await self.bot.fetch_user(int(user_id))
-                                                        username_part = mentioned_user.display_name if mentioned_user else f"User{user_id}"
-                                                except:
-                                                    username_part = f"User{user_id}"
-                                            else:
-                                                username_part = "Someone"
-                                        elif '**' in before_colon:
-                                            username_part = before_colon.split('**')[-1].strip()
-                                        else:
-                                            username_part = "Someone"
-                                        reply_data['reply_to_content'] = actual_message
-                                        reply_data['reply_to_username'] = username_part
-                                        print(f"✅ Extracted - User: {username_part}, Content: {actual_message[:30]}...")
-                                    else:
-                                        reply_data['reply_to_content'] = bot_content
+                                            reply_data['reply_to_content'] = last_part
+                                            reply_data['reply_to_username'] = "Previous User"
                                 else:
-                                    reply_data['reply_to_content'] = bot_content
+                                    # Try different patterns to extract username and content
+                                    if '**: **' in bot_content:
+                                        # Pattern: "URL • @Username**: ** actual message"
+                                        parts = bot_content.split('**: **')
+                                        if len(parts) >= 2:
+                                            # Get the actual message (remove extra formatting)
+                                            actual_message = parts[1].strip().replace('*', '').strip()
+                                            # Extract username from the first part
+                                            first_part = parts[0]
+                                            if '<@' in first_part and '>' in first_part:
+                                                # Handle Discord mention format <@userid>
+                                                import re
+                                                mention_match = re.search(r'<@(\d+)>', first_part)
+                                                if mention_match:
+                                                    user_id = mention_match.group(1)
+                                                    try:
+                                                        # Try to get the actual username from Discord
+                                                        mentioned_user = self.bot.get_user(int(user_id))
+                                                        if mentioned_user:
+                                                            username_part = mentioned_user.display_name
+                                                        else:
+                                                            # Try to fetch the user
+                                                            mentioned_user = await self.bot.fetch_user(int(user_id))
+                                                            username_part = mentioned_user.display_name if mentioned_user else f"User{user_id}"
+                                                    except:
+                                                        username_part = f"User{user_id}"
+                                                else:
+                                                    username_part = "Someone"
+                                            else:
+                                                username_part = first_part.split('**')[-1].strip() if '**' in first_part else "Someone"
+                                            reply_data['reply_to_content'] = actual_message
+                                            reply_data['reply_to_username'] = username_part
+                                            print(f"✅ Extracted - User: {username_part}, Content: {actual_message[:30]}...")
+                                        else:
+                                            reply_data['reply_to_content'] = bot_content
+                                    elif '**: ' in bot_content:
+                                        # Pattern: "URL • **Username:** actual message"
+                                        parts = bot_content.split('**: ')
+                                        if len(parts) >= 2:
+                                            actual_message = parts[-1].strip().replace('*', '').strip()
+                                            # Extract username from before the :**
+                                            before_colon = parts[-2]
+                                            if '<@' in before_colon and '>' in before_colon:
+                                                # Handle Discord mention format <@userid>
+                                                import re
+                                                mention_match = re.search(r'<@(\d+)>', before_colon)
+                                                if mention_match:
+                                                    user_id = mention_match.group(1)
+                                                    try:
+                                                        # Try to get the actual username from Discord
+                                                        mentioned_user = self.bot.get_user(int(user_id))
+                                                        if mentioned_user:
+                                                            username_part = mentioned_user.display_name
+                                                        else:
+                                                            # Try to fetch the user
+                                                            mentioned_user = await self.bot.fetch_user(int(user_id))
+                                                            username_part = mentioned_user.display_name if mentioned_user else f"User{user_id}"
+                                                    except:
+                                                        username_part = f"User{user_id}"
+                                                else:
+                                                    username_part = "Someone"
+                                            elif '**' in before_colon:
+                                                username_part = before_colon.split('**')[-1].strip()
+                                            else:
+                                                username_part = "Someone"
+                                            reply_data['reply_to_content'] = actual_message
+                                            reply_data['reply_to_username'] = username_part
+                                            print(f"✅ Extracted - User: {username_part}, Content: {actual_message[:30]}...")
+                                        else:
+                                            reply_data['reply_to_content'] = bot_content
+                                    else:
+                                        reply_data['reply_to_content'] = bot_content
                             else:
                                 reply_data['reply_to_content'] = original_message.content
                         elif hasattr(original_message, 'embeds') and original_message.embeds:
@@ -309,8 +332,8 @@ class GlobalChatManager:
         
         # Create plain text message with room name and reply context
         if reply_context:
-            # For replies, show the reply context clearly
-            message_content = f"{reply_context}**{original_message.author.display_name}:** {original_message.content}\n\n*🔗 [Jump to original]({original_message_url})*"
+            # For replies, use the same header format as regular messages but with reply context
+            message_content = f"{original_message_url} • {reply_context}{original_message.author.mention}**: ** {original_message.content} \n\n"
         else:
             # For regular messages, use the original format
             message_content = f"{original_message_url} • {original_message.author.mention}**: ** {original_message.content} \n\n"
