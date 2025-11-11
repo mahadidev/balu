@@ -151,29 +151,63 @@ class GlobalChatManager:
                 else:
                     print(f"📋 Message not in database, trying Discord API...")
                     # If not in our database, try to get the original message from Discord
+                    original_message = None
+                    
+                    # Try resolved reference first
                     if message.reference.resolved:
-                        # Discord has already resolved the message
                         original_message = message.reference.resolved
-                        if hasattr(original_message, 'author') and hasattr(original_message, 'content'):
-                            print(f"✅ Found via resolved reference: {original_message.author.display_name}")
-                            reply_data['reply_to_message_id'] = str(message.reference.message_id)
-                            reply_data['reply_to_username'] = original_message.author.display_name
-                            reply_data['reply_to_content'] = original_message.content or "[No text content]"
+                        print(f"✅ Found via resolved reference: {original_message.author.display_name}")
                     else:
                         # Try to fetch the message manually
                         try:
                             print(f"🔍 Fetching message manually from Discord...")
                             original_message = await message.channel.fetch_message(message.reference.message_id)
                             print(f"✅ Found via manual fetch: {original_message.author.display_name}")
-                            reply_data['reply_to_message_id'] = str(message.reference.message_id)
-                            reply_data['reply_to_username'] = original_message.author.display_name
-                            reply_data['reply_to_content'] = original_message.content or "[No text content]"
                         except Exception as fetch_error:
                             print(f"❌ Could not fetch original message: {fetch_error}")
-                            # If all fails, show basic reply info
-                            reply_data['reply_to_message_id'] = str(message.reference.message_id)
-                            reply_data['reply_to_username'] = "Unknown User"
-                            reply_data['reply_to_content'] = "[Message not found]"
+                    
+                    # Process the found message
+                    if original_message and hasattr(original_message, 'author'):
+                        reply_data['reply_to_message_id'] = str(message.reference.message_id)
+                        reply_data['reply_to_username'] = original_message.author.display_name
+                        
+                        # Get the content, handling different message types
+                        if hasattr(original_message, 'content') and original_message.content:
+                            # Check if this is a global chat message from our bot
+                            if original_message.author.bot and original_message.author.id == self.bot.user.id:
+                                # Parse bot's global chat message to extract original content
+                                bot_content = original_message.content
+                                # Look for pattern: "URL • **Username:** actual message"
+                                if '**' in bot_content and ':' in bot_content:
+                                    # Extract the part after the last **: 
+                                    parts = bot_content.split('**: ')
+                                    if len(parts) > 1:
+                                        actual_message = parts[-1].strip()
+                                        # Extract username (between ** and **)
+                                        username_part = parts[-2].split('**')[-1] if '**' in parts[-2] else "Someone"
+                                        reply_data['reply_to_content'] = actual_message
+                                        reply_data['reply_to_username'] = username_part
+                                    else:
+                                        reply_data['reply_to_content'] = bot_content
+                                else:
+                                    reply_data['reply_to_content'] = bot_content
+                            else:
+                                reply_data['reply_to_content'] = original_message.content
+                        elif hasattr(original_message, 'embeds') and original_message.embeds:
+                            # If it's an embed message (like from our bot)
+                            reply_data['reply_to_content'] = original_message.embeds[0].description or "[Embed message]"
+                        elif hasattr(original_message, 'attachments') and original_message.attachments:
+                            reply_data['reply_to_content'] = f"[Attachment: {original_message.attachments[0].filename}]"
+                        else:
+                            reply_data['reply_to_content'] = "[No text content]"
+                        
+                        print(f"📝 Extracted content: {reply_data['reply_to_content'][:50]}...")
+                    else:
+                        # If all fails, show basic reply info
+                        print(f"❌ Could not get original message data")
+                        reply_data['reply_to_message_id'] = str(message.reference.message_id)
+                        reply_data['reply_to_username'] = "Unknown User"
+                        reply_data['reply_to_content'] = "[Message not found]"
             except Exception as e:
                 print(f"⚠️ Error extracting reply data: {e}")
         
