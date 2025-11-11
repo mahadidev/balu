@@ -98,7 +98,7 @@ class GlobalChatManager:
         self.last_message_content[user_key] = message.content.strip()
         
         # Check if this is a reply message
-        reply_data = self._extract_reply_data(message, room_name)
+        reply_data = await self._extract_reply_data(message, room_name)
         
         # Log the message
         self.db.log_global_chat_message(
@@ -133,18 +133,49 @@ class GlobalChatManager:
                 return True
         return False
     
-    def _extract_reply_data(self, message: discord.Message, room_name: str):
+    async def _extract_reply_data(self, message: discord.Message, room_name: str):
         """Extract reply data from a Discord message"""
         reply_data = {}
         
         # Check if the message is a reply to another message
         if message.reference and message.reference.message_id:
-            # Get the original message data from our database
-            original_msg_data = self.db.get_message_for_reply(str(message.reference.message_id), room_name)
-            if original_msg_data:
-                reply_data['reply_to_message_id'] = str(message.reference.message_id)
-                reply_data['reply_to_username'] = original_msg_data['username']
-                reply_data['reply_to_content'] = original_msg_data['content']
+            print(f"🔍 Reply detected! Message ID: {message.reference.message_id}")
+            try:
+                # First try to get from our database (for global chat messages)
+                original_msg_data = self.db.get_message_for_reply(str(message.reference.message_id), room_name)
+                if original_msg_data:
+                    print(f"✅ Found original message in database: {original_msg_data['username']}")
+                    reply_data['reply_to_message_id'] = str(message.reference.message_id)
+                    reply_data['reply_to_username'] = original_msg_data['username']
+                    reply_data['reply_to_content'] = original_msg_data['content']
+                else:
+                    print(f"📋 Message not in database, trying Discord API...")
+                    # If not in our database, try to get the original message from Discord
+                    if message.reference.resolved:
+                        # Discord has already resolved the message
+                        original_message = message.reference.resolved
+                        if hasattr(original_message, 'author') and hasattr(original_message, 'content'):
+                            print(f"✅ Found via resolved reference: {original_message.author.display_name}")
+                            reply_data['reply_to_message_id'] = str(message.reference.message_id)
+                            reply_data['reply_to_username'] = original_message.author.display_name
+                            reply_data['reply_to_content'] = original_message.content or "[No text content]"
+                    else:
+                        # Try to fetch the message manually
+                        try:
+                            print(f"🔍 Fetching message manually from Discord...")
+                            original_message = await message.channel.fetch_message(message.reference.message_id)
+                            print(f"✅ Found via manual fetch: {original_message.author.display_name}")
+                            reply_data['reply_to_message_id'] = str(message.reference.message_id)
+                            reply_data['reply_to_username'] = original_message.author.display_name
+                            reply_data['reply_to_content'] = original_message.content or "[No text content]"
+                        except Exception as fetch_error:
+                            print(f"❌ Could not fetch original message: {fetch_error}")
+                            # If all fails, show basic reply info
+                            reply_data['reply_to_message_id'] = str(message.reference.message_id)
+                            reply_data['reply_to_username'] = "Unknown User"
+                            reply_data['reply_to_content'] = "[Message not found]"
+            except Exception as e:
+                print(f"⚠️ Error extracting reply data: {e}")
         
         return reply_data
     
@@ -160,7 +191,7 @@ class GlobalChatManager:
         original_message_url = f"https://discord.com/channels/{original_message.guild.id}/{original_message.channel.id}/{original_message.id}"
         
         # Check if this is a reply message
-        reply_data = self._extract_reply_data(original_message, room_name)
+        reply_data = await self._extract_reply_data(original_message, room_name)
         
         # Create reply context if this is a reply
         reply_context = ""
@@ -173,6 +204,9 @@ class GlobalChatManager:
                 reply_to_content = reply_to_content[:47] + "..."
             
             reply_context = f"↳ **Replying to {reply_to_username}:** *{reply_to_content}*\n"
+            print(f"📝 Adding reply context: {reply_context.strip()}")
+        else:
+            print(f"📝 No reply data found, sending as regular message")
         
         # Create plain text message with room name and reply context
         message_content = f"{original_message_url} • {reply_context}{original_message.author.mention}**: ** {original_message.content} \n\n"
