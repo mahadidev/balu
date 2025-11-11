@@ -1,0 +1,66 @@
+# Admin Panel Dockerfile (FastAPI + React)
+FROM node:18-alpine AS frontend-builder
+
+# Set working directory for frontend build
+WORKDIR /app/frontend
+
+# Copy package files
+COPY admin/frontend/package*.json ./
+
+# Install dependencies
+RUN npm ci --only=production
+
+# Copy frontend source
+COPY admin/frontend/ ./
+
+# Build React app
+RUN npm run build
+
+# Production stage
+FROM python:3.11-slim
+
+# Set working directory
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    gcc \
+    g++ \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements
+COPY admin/backend/requirements.txt /app/requirements.txt
+
+# Install Python dependencies
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy shared modules
+COPY shared/ /app/shared/
+
+# Copy backend code
+COPY admin/backend/ /app/admin/backend/
+
+# Copy built frontend from previous stage
+COPY --from=frontend-builder /app/frontend/build/ /app/admin/backend/static/
+
+# Create logs directory
+RUN mkdir -p /app/logs
+
+# Set Python path
+ENV PYTHONPATH=/app
+
+# Create non-root user
+RUN useradd --create-home --shell /bin/bash adminuser
+RUN chown -R adminuser:adminuser /app
+USER adminuser
+
+# Expose port
+EXPOSE 8000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8000/api/status || exit 1
+
+# Run the admin panel
+CMD ["python", "-m", "uvicorn", "admin.backend.main:app", "--host", "0.0.0.0", "--port", "8000"]

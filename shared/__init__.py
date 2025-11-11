@@ -1,0 +1,1 @@
+# Shared components between Discord bot and admin panel
