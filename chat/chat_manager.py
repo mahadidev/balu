@@ -177,16 +177,41 @@ class GlobalChatManager:
                             if original_message.author.bot and original_message.author.id == self.bot.user.id:
                                 # Parse bot's global chat message to extract original content
                                 bot_content = original_message.content
-                                # Look for pattern: "URL • **Username:** actual message"
-                                if '**' in bot_content and ':' in bot_content:
-                                    # Extract the part after the last **: 
-                                    parts = bot_content.split('**: ')
-                                    if len(parts) > 1:
-                                        actual_message = parts[-1].strip()
-                                        # Extract username (between ** and **)
-                                        username_part = parts[-2].split('**')[-1] if '**' in parts[-2] else "Someone"
+                                # Look for pattern: "URL • **Username:** actual message" or "URL • @Username**: ** actual message"
+                                print(f"🔍 Bot message content: {bot_content[:100]}...")
+                                
+                                # Try different patterns to extract username and content
+                                if '**: **' in bot_content:
+                                    # Pattern: "URL • @Username**: ** actual message"
+                                    parts = bot_content.split('**: **')
+                                    if len(parts) >= 2:
+                                        # Get the actual message (remove extra formatting)
+                                        actual_message = parts[1].strip().replace('*', '').strip()
+                                        # Extract username from the first part
+                                        first_part = parts[0]
+                                        if '@' in first_part:
+                                            username_part = first_part.split('@')[-1].split('**')[0].strip()
+                                        else:
+                                            username_part = first_part.split('**')[-1].strip() if '**' in first_part else "Someone"
                                         reply_data['reply_to_content'] = actual_message
                                         reply_data['reply_to_username'] = username_part
+                                        print(f"✅ Extracted - User: {username_part}, Content: {actual_message[:30]}...")
+                                    else:
+                                        reply_data['reply_to_content'] = bot_content
+                                elif '**: ' in bot_content:
+                                    # Pattern: "URL • **Username:** actual message"
+                                    parts = bot_content.split('**: ')
+                                    if len(parts) >= 2:
+                                        actual_message = parts[-1].strip().replace('*', '').strip()
+                                        # Extract username from before the :**
+                                        before_colon = parts[-2]
+                                        if '**' in before_colon:
+                                            username_part = before_colon.split('**')[-1].strip()
+                                        else:
+                                            username_part = "Someone"
+                                        reply_data['reply_to_content'] = actual_message
+                                        reply_data['reply_to_username'] = username_part
+                                        print(f"✅ Extracted - User: {username_part}, Content: {actual_message[:30]}...")
                                     else:
                                         reply_data['reply_to_content'] = bot_content
                                 else:
@@ -233,9 +258,13 @@ class GlobalChatManager:
             reply_to_username = reply_data['reply_to_username']
             reply_to_content = reply_data['reply_to_content']
             
-            # Truncate the original message content if it's too long
+            # Clean and truncate the original message content
+            reply_to_content = reply_to_content.strip()
             if len(reply_to_content) > 50:
                 reply_to_content = reply_to_content[:47] + "..."
+            
+            # Clean any extra formatting characters
+            reply_to_content = reply_to_content.replace('**', '').replace('*', '').strip()
             
             reply_context = f"┌─ **💬 Replying to {reply_to_username}:** *{reply_to_content}*\n└─ "
             print(f"📝 Adding reply context: {reply_context.strip()}")
