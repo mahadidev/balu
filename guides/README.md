@@ -20,6 +20,22 @@ Complete guide for setting up and running the system on your local machine for d
 - Database and Redis setup
 - Hot reload configuration
 
+### 🐍 [Virtual Environment Development](venv-development.md)
+Alternative development setup using Python virtual environments (.venv) for faster local development.
+
+**Use this if you want to:**
+- Faster startup times (5 seconds vs 60 seconds)
+- Direct IDE debugging support
+- Lower resource usage
+- Quick prototyping and testing
+
+**Key Topics:**
+- .venv setup and activation
+- Hybrid approach (Docker for services, .venv for apps)
+- IDE configuration for debugging
+- Performance comparison
+- Switching between Docker and .venv
+
 ---
 
 ### ☁️ [VPS Deployment](vps-deployment.md)
@@ -124,6 +140,7 @@ Each guide includes:
 | Goal | Guide | Time Required |
 |------|-------|---------------|
 | **Learn the system** | [Local Development](local-development.md) | 30-60 minutes |
+| **Fast local development** | [Virtual Environment Development](venv-development.md) | 15-30 minutes |
 | **Deploy for production** | [VPS Deployment](vps-deployment.md) | 1-2 hours |
 | **Fix issues** | [Troubleshooting](troubleshooting.md) | 10-30 minutes |
 | **Build integrations** | [API Reference](api-reference.md) | As needed |
