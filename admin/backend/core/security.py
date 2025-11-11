@@ -7,14 +7,14 @@ from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
 import hashlib
 import secrets
-import jwt
-from passlib.context import CryptContext
+from jose import jwt
 
 from .config import settings
 
 
-# Password hashing
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# Password hashing - simple sha256 with salt to avoid bcrypt issues
+import hashlib
+import secrets
 
 
 class SecurityManager:
@@ -31,11 +31,26 @@ class SecurityManager:
     
     def hash_password(self, password: str) -> str:
         """Hash a password for storing in the database."""
-        return pwd_context.hash(password)
+        # Generate a random salt
+        salt = secrets.token_hex(16)
+        # Combine password and salt, then hash
+        password_bytes = (password + salt).encode('utf-8')
+        password_hash = hashlib.sha256(password_bytes).hexdigest()
+        # Return salt + hash
+        return f"{salt}:{password_hash}"
     
     def verify_password(self, plain_password: str, hashed_password: str) -> bool:
         """Verify a plain password against a hashed password."""
-        return pwd_context.verify(plain_password, hashed_password)
+        try:
+            # Split salt and hash
+            salt, stored_hash = hashed_password.split(':', 1)
+            # Hash the provided password with the stored salt
+            password_bytes = (plain_password + salt).encode('utf-8')
+            password_hash = hashlib.sha256(password_bytes).hexdigest()
+            # Compare hashes
+            return password_hash == stored_hash
+        except:
+            return False
     
     # ============================================================================
     # JWT TOKEN OPERATIONS

@@ -75,7 +75,7 @@ backup_data() {
         # Backup database if running
         if docker-compose ps postgres | grep -q "Up"; then
             backup_file="$BACKUP_DIR/postgres_$(date +%Y%m%d_%H%M%S).sql"
-            docker-compose exec -T postgres pg_dump -U postgres globalchat > "$backup_file"
+            docker-compose exec -T postgres pg_dump -U postgres balu > "$backup_file"
             log_success "Database backup created: $backup_file"
         fi
         
@@ -110,7 +110,7 @@ deploy_services() {
     
     # Wait for database to be ready
     log_info "Waiting for database to be ready..."
-    timeout 60 bash -c 'until docker-compose exec postgres pg_isready -U postgres -d globalchat; do sleep 2; done'
+    timeout 60 bash -c 'until docker-compose exec postgres pg_isready -U postgres -d balu; do sleep 2; done'
     
     # Run database migrations
     log_info "Running database migrations..."

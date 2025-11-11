@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # PostgreSQL Database
   postgres:
@@ -7,9 +5,9 @@ services:
     container_name: globalchat_postgres
     restart: unless-stopped
     environment:
-      POSTGRES_DB: globalchat
+      POSTGRES_DB: balu   # ⬅️ UPDATED DB NAME
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
+      POSTGRES_PASSWORD: 123 # ⬅️ UPDATED PASSWORD (Hardcoded for clarity here)
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./scripts/init.sql:/docker-entrypoint-initdb.d/init.sql
@@ -18,7 +16,7 @@ services:
     networks:
       - globalchat_network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d globalchat"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d balu"] # ⬅️ UPDATED DB NAME
       interval: 10s
       timeout: 5s
       retries: 5
@@ -49,7 +47,8 @@ services:
     container_name: globalchat_bot
     restart: unless-stopped
     environment:
-      - DATABASE_URL=postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:-password}@postgres:5432/globalchat
+      # ⬅️ UPDATED DATABASE_URL
+      - DATABASE_URL=postgresql+asyncpg://postgres:123@postgres:5432/balu
       - REDIS_URL=redis://redis:6379/0
       - DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN}
       - DEBUG=${DEBUG:-false}
@@ -71,13 +70,13 @@ services:
     container_name: globalchat_admin
     restart: unless-stopped
     environment:
-      - DATABASE_URL=postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:-password}@postgres:5432/globalchat
+      # ⬅️ UPDATED DATABASE_URL
+      - DATABASE_URL=postgresql+asyncpg://postgres:123@postgres:5432/balu
       - REDIS_URL=redis://redis:6379/0
       - SECRET_KEY=${SECRET_KEY:-your-super-secret-key-change-in-production}
       - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin123}
       - DEBUG=${DEBUG:-false}
-      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
     ports:
       - "8000:8000"
     volumes:

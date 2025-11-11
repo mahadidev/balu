@@ -9,8 +9,8 @@ from fastapi import APIRouter, HTTPException, Depends, Query
 from pydantic import BaseModel
 
 from ..api.auth import get_current_user
-from ...shared.database.manager import db_manager
-from ...shared.cache.cache_manager import cache_manager
+from shared.database.manager import db_manager
+from shared.cache.cache_manager import cache_manager
 
 
 # Response models

@@ -69,7 +69,7 @@ fi
 log_info "Installing Discord bot dependencies..."
 source .venv/bin/activate
 pip install --upgrade pip
-pip install -r requirements.txt
+pip install --prefer-binary -r requirements.txt
 deactivate
 log_success "Discord bot dependencies installed"
 cd ..
@@ -88,7 +88,7 @@ fi
 log_info "Installing Admin backend dependencies..."
 source .venv/bin/activate
 pip install --upgrade pip
-pip install -r requirements.txt
+pip install --prefer-binary -r requirements.txt
 deactivate
 log_success "Admin backend dependencies installed"
 cd ../..

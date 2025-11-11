@@ -190,8 +190,8 @@ class ConnectionManager:
         try:
             while self._monitoring_active:
                 # Import here to avoid circular imports
-                from ...shared.database.manager import db_manager
-                from ...shared.cache.cache_manager import cache_manager
+                from shared.database.manager import db_manager
+                from shared.cache.cache_manager import cache_manager
                 
                 try:
                     # Get live stats from database

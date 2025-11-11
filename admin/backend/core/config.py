@@ -63,8 +63,7 @@ class Settings(BaseSettings):
             'secret_key': {'env': 'SECRET_KEY'},
             'admin_username': {'env': 'ADMIN_USERNAME'},
             'admin_password': {'env': 'ADMIN_PASSWORD'},
-            'debug': {'env': 'DEBUG'},
-            'allowed_origins': {'env': 'ALLOWED_ORIGINS'}
+            'debug': {'env': 'DEBUG'}
         }
 
 

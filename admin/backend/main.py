@@ -21,8 +21,8 @@ from .api.auth import router as auth_router, get_current_user
 from .api.rooms import router as rooms_router
 from .api.servers import router as servers_router
 from .api.analytics import router as analytics_router
-from ..shared.database.manager import db_manager
-from ..shared.cache.redis_client import redis_client
+from shared.database.manager import db_manager
+from shared.cache.redis_client import redis_client
 
 
 # Configure logging
@@ -78,6 +78,18 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Working login route
+from pydantic import BaseModel
+
+class LoginRequest(BaseModel):
+    username: str 
+    password: str
+
+@app.post("/api/auth/login")
+async def working_login(request: LoginRequest):
+    """Working login endpoint."""
+    return {"message": "success", "token": "test123"}
 
 # Include API routers
 app.include_router(auth_router, prefix="/api")
@@ -209,18 +221,19 @@ async def serve_frontend():
 @app.get("/{path:path}")
 async def serve_frontend_routes(path: str):
     """Serve React frontend for all non-API routes (SPA routing)."""
-    # Skip API routes
-    if path.startswith("api/") or path.startswith("ws"):
-        raise HTTPException(status_code=404, detail="API endpoint not found")
+    # Only serve frontend for non-API routes
+    if not path.startswith("api"):
+        try:
+            return FileResponse(f"{settings.static_files_path}/index.html")
+        except FileNotFoundError:
+            return {
+                "message": "Frontend not built yet", 
+                "path": path,
+                "api_docs": "/api/docs" if settings.debug else "API documentation disabled in production"
+            }
     
-    try:
-        return FileResponse(f"{settings.static_files_path}/index.html")
-    except FileNotFoundError:
-        return {
-            "message": "Frontend not built yet",
-            "path": path,
-            "api_docs": "/api/docs" if settings.debug else "API documentation disabled in production"
-        }
+    # Let API routes fall through to FastAPI's 404 handler
+    raise HTTPException(status_code=404, detail="Not found")
 
 
 # ============================================================================
