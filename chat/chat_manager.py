@@ -189,8 +189,25 @@ class GlobalChatManager:
                                         actual_message = parts[1].strip().replace('*', '').strip()
                                         # Extract username from the first part
                                         first_part = parts[0]
-                                        if '@' in first_part:
-                                            username_part = first_part.split('@')[-1].split('**')[0].strip()
+                                        if '<@' in first_part and '>' in first_part:
+                                            # Handle Discord mention format <@userid>
+                                            import re
+                                            mention_match = re.search(r'<@(\d+)>', first_part)
+                                            if mention_match:
+                                                user_id = mention_match.group(1)
+                                                try:
+                                                    # Try to get the actual username from Discord
+                                                    mentioned_user = self.bot.get_user(int(user_id))
+                                                    if mentioned_user:
+                                                        username_part = mentioned_user.display_name
+                                                    else:
+                                                        # Try to fetch the user
+                                                        mentioned_user = await self.bot.fetch_user(int(user_id))
+                                                        username_part = mentioned_user.display_name if mentioned_user else f"User{user_id}"
+                                                except:
+                                                    username_part = f"User{user_id}"
+                                            else:
+                                                username_part = "Someone"
                                         else:
                                             username_part = first_part.split('**')[-1].strip() if '**' in first_part else "Someone"
                                         reply_data['reply_to_content'] = actual_message
@@ -205,7 +222,26 @@ class GlobalChatManager:
                                         actual_message = parts[-1].strip().replace('*', '').strip()
                                         # Extract username from before the :**
                                         before_colon = parts[-2]
-                                        if '**' in before_colon:
+                                        if '<@' in before_colon and '>' in before_colon:
+                                            # Handle Discord mention format <@userid>
+                                            import re
+                                            mention_match = re.search(r'<@(\d+)>', before_colon)
+                                            if mention_match:
+                                                user_id = mention_match.group(1)
+                                                try:
+                                                    # Try to get the actual username from Discord
+                                                    mentioned_user = self.bot.get_user(int(user_id))
+                                                    if mentioned_user:
+                                                        username_part = mentioned_user.display_name
+                                                    else:
+                                                        # Try to fetch the user
+                                                        mentioned_user = await self.bot.fetch_user(int(user_id))
+                                                        username_part = mentioned_user.display_name if mentioned_user else f"User{user_id}"
+                                                except:
+                                                    username_part = f"User{user_id}"
+                                            else:
+                                                username_part = "Someone"
+                                        elif '**' in before_colon:
                                             username_part = before_colon.split('**')[-1].strip()
                                         else:
                                             username_part = "Someone"
