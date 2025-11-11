@@ -56,6 +56,9 @@ class DatabaseManager:
                     username TEXT NOT NULL,
                     guild_name TEXT,
                     content TEXT NOT NULL,
+                    reply_to_message_id TEXT,
+                    reply_to_username TEXT,
+                    reply_to_content TEXT,
                     timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             ''')
@@ -305,14 +308,14 @@ class DatabaseManager:
             
             if room_name:
                 cursor.execute('''
-                    SELECT guild_id, channel_id, guild_name, channel_name, room_name
+                    SELECT guild_id, channel_id, guild_name, channel_name, room_name, registered_by
                     FROM global_chat_channels 
                     WHERE room_name = ? AND is_active = TRUE
                     ORDER BY guild_name
                 ''', (room_name,))
             else:
                 cursor.execute('''
-                    SELECT guild_id, channel_id, guild_name, channel_name, room_name
+                    SELECT guild_id, channel_id, guild_name, channel_name, room_name, registered_by
                     FROM global_chat_channels 
                     WHERE is_active = TRUE
                     ORDER BY guild_name
@@ -327,7 +330,8 @@ class DatabaseManager:
                     'channel_id': result[1],
                     'guild_name': result[2],
                     'channel_name': result[3],
-                    'room_name': result[4]
+                    'room_name': result[4],
+                    'registered_by': result[5]
                 })
             
             return channels
@@ -343,8 +347,8 @@ class DatabaseManager:
             result = cursor.fetchone()
             return result[0] if result else None
     
-    def log_global_chat_message(self, message_id, room_name, guild_id, channel_id, user_id, username, guild_name, content):
-        """Log a global chat message"""
+    def log_global_chat_message(self, message_id, room_name, guild_id, channel_id, user_id, username, guild_name, content, reply_to_message_id=None, reply_to_username=None, reply_to_content=None):
+        """Log a global chat message with optional reply data"""
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
             
@@ -352,9 +356,26 @@ class DatabaseManager:
             
             cursor.execute('''
                 INSERT INTO global_chat_messages 
-                (message_id, room_name, guild_id, channel_id, user_id, username, guild_name, content, timestamp)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (message_id, room_name, guild_id, channel_id, user_id, username, guild_name, content, dhaka_time))
+                (message_id, room_name, guild_id, channel_id, user_id, username, guild_name, content, reply_to_message_id, reply_to_username, reply_to_content, timestamp)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (message_id, room_name, guild_id, channel_id, user_id, username, guild_name, content, reply_to_message_id, reply_to_username, reply_to_content, dhaka_time))
+    
+    def get_message_for_reply(self, message_id, room_name):
+        """Get message data for reply functionality"""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT username, content FROM global_chat_messages 
+                WHERE message_id = ? AND room_name = ?
+                ORDER BY timestamp DESC LIMIT 1
+            ''', (message_id, room_name))
+            result = cursor.fetchone()
+            if result:
+                return {
+                    'username': result[0],
+                    'content': result[1]
+                }
+            return None
     
     def get_global_chat_setting(self, setting_name):
         """Get a global chat setting value"""

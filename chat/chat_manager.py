@@ -97,6 +97,9 @@ class GlobalChatManager:
         self.last_message_time[user_key] = current_time
         self.last_message_content[user_key] = message.content.strip()
         
+        # Check if this is a reply message
+        reply_data = self._extract_reply_data(message, room_name)
+        
         # Log the message
         self.db.log_global_chat_message(
             str(message.id),
@@ -106,7 +109,10 @@ class GlobalChatManager:
             str(message.author.id),
             message.author.display_name,
             message.guild.name,
-            message.content
+            message.content,
+            reply_data.get('reply_to_message_id'),
+            reply_data.get('reply_to_username'),
+            reply_data.get('reply_to_content')
         )
         
         # Broadcast to all other registered channels in the same room
@@ -127,6 +133,21 @@ class GlobalChatManager:
                 return True
         return False
     
+    def _extract_reply_data(self, message: discord.Message, room_name: str):
+        """Extract reply data from a Discord message"""
+        reply_data = {}
+        
+        # Check if the message is a reply to another message
+        if message.reference and message.reference.message_id:
+            # Get the original message data from our database
+            original_msg_data = self.db.get_message_for_reply(str(message.reference.message_id), room_name)
+            if original_msg_data:
+                reply_data['reply_to_message_id'] = str(message.reference.message_id)
+                reply_data['reply_to_username'] = original_msg_data['username']
+                reply_data['reply_to_content'] = original_msg_data['content']
+        
+        return reply_data
+    
     async def broadcast_message(self, original_message: discord.Message, room_name: str):
         """Broadcast message to all registered global chat channels in the same room"""
         # Get all registered channels in the same room
@@ -138,8 +159,23 @@ class GlobalChatManager:
 
         original_message_url = f"https://discord.com/channels/{original_message.guild.id}/{original_message.channel.id}/{original_message.id}"
         
-        # Create plain text message with room name
-        message_content = f"{original_message_url} • {original_message.author.mention}**: ** {original_message.content} \n\n"
+        # Check if this is a reply message
+        reply_data = self._extract_reply_data(original_message, room_name)
+        
+        # Create reply context if this is a reply
+        reply_context = ""
+        if reply_data.get('reply_to_message_id'):
+            reply_to_username = reply_data['reply_to_username']
+            reply_to_content = reply_data['reply_to_content']
+            
+            # Truncate the original message content if it's too long
+            if len(reply_to_content) > 50:
+                reply_to_content = reply_to_content[:47] + "..."
+            
+            reply_context = f"↳ **Replying to {reply_to_username}:** *{reply_to_content}*\n"
+        
+        # Create plain text message with room name and reply context
+        message_content = f"{original_message_url} • {reply_context}{original_message.author.mention}**: ** {original_message.content} \n\n"
         
         print(f"📝 Message content: {message_content[:100]}..." if len(message_content) > 100 else f"📝 Message content: {message_content}")
         
@@ -179,6 +215,7 @@ class GlobalChatManager:
                 # Check if bot has permission to send messages
                 if not channel.permissions_for(guild.me).send_messages:
                     print(f"   ❌ No permission to send messages")
+                    await self._notify_permission_issue(channel_info, "send messages", room_name)
                     continue
                 
                 print(f"   ✅ Permissions OK, sending message...")
@@ -187,6 +224,7 @@ class GlobalChatManager:
                 
             except discord.Forbidden:
                 print(f"   ❌ Forbidden: No permission to send message in {channel_info['guild_name']} - {channel_info['channel_name']}")
+                await self._notify_permission_issue(channel_info, "send messages (Forbidden)", room_name)
             except discord.NotFound:
                 print(f"   ❌ Not Found: Channel not found: {channel_info['guild_name']} - {channel_info['channel_name']}")
             except Exception as e:
@@ -709,5 +747,50 @@ class GlobalChatManager:
         
         security_embed.set_footer(text="These defaults protect 99% of rooms perfectly! • React 🎛️ on overview to customize")
         await channel.send(embed=security_embed)
+    
+    async def _notify_permission_issue(self, channel_info: dict, permission_type: str, room_name: str):
+        """Send DM notification to user who registered the channel about permission issues"""
+        try:
+            # Get the user who registered this channel
+            registered_by_id = channel_info.get('registered_by')
+            if not registered_by_id:
+                print(f"   ⚠️ No registered_by info for channel {channel_info['guild_name']} - {channel_info['channel_name']}")
+                return
+            
+            # Get the user object
+            user = self.bot.get_user(int(registered_by_id))
+            if not user:
+                try:
+                    user = await self.bot.fetch_user(int(registered_by_id))
+                except:
+                    print(f"   ⚠️ Could not find user {registered_by_id} for permission notification")
+                    return
+            
+            # Create notification embed
+            embed = discord.Embed(
+                title="🚫 Global Chat Permission Issue",
+                description=f"**Bot has no permission to {permission_type}**\n\n"
+                           f"**Room:** {room_name}\n"
+                           f"**Server:** {channel_info['guild_name']}\n"
+                           f"**Channel:** #{channel_info['channel_name']}\n\n"
+                           f"**Action Required:**\n"
+                           f"Please give the bot permission to **{permission_type}** in {channel_info['channel_name']} to receive global chat messages.\n\n"
+                           f"**How to fix:**\n"
+                           f"1. Go to your server settings\n"
+                           f"2. Navigate to Roles → @{self.bot.user.name} role\n"
+                           f"3. Enable 'Send Messages' permission\n"
+                           f"4. Or give the bot permission in the specific channel",
+                color=0xff6b6b
+            )
+            embed.set_footer(text="This notification was sent because you registered this channel for global chat")
+            
+            # Send DM to the user
+            await user.send(embed=embed)
+            print(f"   ✅ Permission notification sent to user {user.name} ({registered_by_id})")
+            
+        except discord.Forbidden:
+            print(f"   ❌ Could not send DM to user {registered_by_id} - DMs are disabled")
+        except Exception as e:
+            print(f"   ❌ Error sending permission notification to user {registered_by_id}: {e}")
     
     
