@@ -1,0 +1,24 @@
+# Discord Bot Dependencies
+
+# Discord.py - Main Discord library
+discord.py==2.3.2
+
+# Database (Async PostgreSQL)
+asyncpg==0.29.0
+sqlalchemy[asyncio]==2.0.23
+
+# Cache (Redis)
+redis[hiredis]==5.0.1
+
+# Configuration
+python-dotenv==1.0.0
+
+# Utilities
+aiofiles==23.2.1
+python-dateutil==2.8.2
+
+# Development/Debugging
+colorama==0.4.6
+
+# Async HTTP (for health checks)
+aiohttp==3.9.1

@@ -1,12 +1,18 @@
 import os
+import sys
 import asyncio
 import discord
 from discord.ext import commands
-from database.db_manager import DatabaseManager
+
+# Add project root to Python path
+sys.path.insert(0, '/app')
+
+# Import shared components
+from shared.database.manager import db_manager
+from shared.cache.redis_client import redis_client
 
 # Import command modules
-from core_commands import setup_core_commands
-from chat.commands import GlobalChatCommands
+from commands import GlobalChatCommands
 
 # Load environment variables
 from dotenv import load_dotenv
@@ -20,31 +26,21 @@ bot = commands.Bot(command_prefix='!', intents=intents)
 
 
 
-# Initialize database
-db_manager = None
-
 @bot.event
 async def on_ready():
-    global db_manager
     print('🎯 Bot ready event triggered')
     
-    
     print('💾 Initializing database...')
-    db_manager = DatabaseManager()
+    await db_manager.initialize()
+    print('  ✅ Database initialized')
     
-    print('⚙️ Setting up command modules...')
-    setup_core_commands(bot)
-    print('  ✅ Core commands loaded')
-    
-    
-    
-    # Debug: Print all registered commands
-    print('📋 Registered commands:')
-    for command in bot.commands:
-        print(f'  - !{command.name}: {command.help or "No description"}')
+    print('💾 Initializing Redis...')
+    await redis_client.initialize()
+    print('  ✅ Redis initialized')
     
     print('💬 Adding chat system cog...')
     await bot.add_cog(GlobalChatCommands(bot))
+    print('  ✅ Chat system loaded')
     
     
     # Only sync slash commands if needed (avoid rate limits)
@@ -123,9 +119,9 @@ async def on_command_error(ctx, error):
 async def run_bot_with_retry():
     """Run bot with automatic reconnection on failure"""
     print('🔍 Checking for Discord token...')
-    token = os.getenv('DISCORD_TOKEN')
+    token = os.getenv('DISCORD_BOT_TOKEN')
     if not token:
-        print('❌ No DISCORD_TOKEN found in .env file!')
+        print('❌ No DISCORD_BOT_TOKEN found in .env file!')
         return
     
     print('✅ Discord token found')

@@ -37,5 +37,8 @@ USER botuser
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD python -c "import asyncio; import aiohttp; asyncio.run(aiohttp.ClientSession().get('http://localhost:8080/health').close())" || exit 1
 
+# Set working directory to chat
+WORKDIR /app/chat
+
 # Run the bot
-CMD ["python", "chat/main.py"]
+CMD ["python", "main.py"]
