@@ -203,13 +203,18 @@ class GlobalChatManager:
             if len(reply_to_content) > 50:
                 reply_to_content = reply_to_content[:47] + "..."
             
-            reply_context = f"↳ **Replying to {reply_to_username}:** *{reply_to_content}*\n"
+            reply_context = f"┌─ **💬 Replying to {reply_to_username}:** *{reply_to_content}*\n└─ "
             print(f"📝 Adding reply context: {reply_context.strip()}")
         else:
             print(f"📝 No reply data found, sending as regular message")
         
         # Create plain text message with room name and reply context
-        message_content = f"{original_message_url} • {reply_context}{original_message.author.mention}**: ** {original_message.content} \n\n"
+        if reply_context:
+            # For replies, show the reply context clearly
+            message_content = f"{reply_context}**{original_message.author.display_name}:** {original_message.content}\n\n*🔗 [Jump to original]({original_message_url})*"
+        else:
+            # For regular messages, use the original format
+            message_content = f"{original_message_url} • {original_message.author.mention}**: ** {original_message.content} \n\n"
         
         print(f"📝 Message content: {message_content[:100]}..." if len(message_content) > 100 else f"📝 Message content: {message_content}")
         
