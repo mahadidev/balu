@@ -394,7 +394,7 @@ class DatabaseManager:
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
             cursor.execute('''
-                SELECT username, content FROM global_chat_messages 
+                SELECT username, content, user_id FROM global_chat_messages 
                 WHERE message_id = ? AND room_name = ?
                 ORDER BY timestamp DESC LIMIT 1
             ''', (message_id, room_name))
@@ -402,7 +402,8 @@ class DatabaseManager:
             if result:
                 return {
                     'username': result[0],
-                    'content': result[1]
+                    'content': result[1],
+                    'user_id': result[2]
                 }
             return None
     

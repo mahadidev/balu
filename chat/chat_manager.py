@@ -133,6 +133,71 @@ class GlobalChatManager:
                 return True
         return False
     
+    def _format_global_message(self, original_message: discord.Message, reply_context: str = ""):
+        """
+        Reusable message formatter for global chat messages.
+        Creates consistent formatting for both regular and reply messages.
+        
+        Args:
+            original_message: The Discord message object
+            reply_context: Optional reply context (e.g., "┌─ 💬 Replying to User: content\n└─ ")
+        
+        Returns:
+            str: Formatted message content
+        """
+        # Create the message URL
+        message_url = f"https://discord.com/channels/{original_message.guild.id}/{original_message.channel.id}/{original_message.id}"
+        
+        # Format attachments if any
+        attachment_text = self._format_attachments(original_message)
+        
+        # Create the formatted message with consistent structure
+        # Format: {URL} • {reply_context}{@user}**: ** {content}{attachments} \n\n
+        formatted_content = f"{message_url} • {reply_context}{original_message.author.mention}**: ** {original_message.content}{attachment_text} \n\n"
+        
+        return formatted_content
+    
+    def _format_reply_context(self, reply_to_username: str, reply_to_content: str) -> str:
+        """
+        Format reply context with consistent styling.
+        
+        Args:
+            reply_to_username: Username being replied to
+            reply_to_content: Content of the message being replied to
+        
+        Returns:
+            str: Formatted reply context
+        """
+        # Clean and truncate the original message content
+        content = reply_to_content.strip()
+        if len(content) > 50:
+            content = content[:47] + "..."
+        
+        # Clean any extra formatting characters
+        content = content.replace('**', '').replace('*', '').strip()
+        
+        # Create the reply context with consistent box drawing
+        return f"┌─ **💬 Replying to {reply_to_username}:** *{content}*\n└─ "
+    
+    def _format_attachments(self, message: discord.Message) -> str:
+        """
+        Format attachment information for global chat messages.
+        
+        Args:
+            message: Discord message with attachments
+        
+        Returns:
+            str: Formatted attachment text or empty string
+        """
+        if not message.attachments:
+            return ""
+        
+        attachment = message.attachments[0]
+        if attachment.content_type and attachment.content_type.startswith('image/'):
+            return f"\n🖼️ Image: {attachment.url}"
+        else:
+            return f"\n📎 Attachment: [{attachment.filename}]({attachment.url})"
+    
     async def _extract_reply_data(self, message: discord.Message, room_name: str):
         """Extract reply data from a Discord message"""
         reply_data = {}
@@ -306,8 +371,6 @@ class GlobalChatManager:
         for ch in channels:
             print(f"   - {ch['guild_name']} #{ch['channel_name']} (ID: {ch['channel_id']})")
 
-        original_message_url = f"https://discord.com/channels/{original_message.guild.id}/{original_message.channel.id}/{original_message.id}"
-        
         # Check if this is a reply message
         reply_data = await self._extract_reply_data(original_message, room_name)
         
@@ -317,36 +380,16 @@ class GlobalChatManager:
             reply_to_username = reply_data['reply_to_username']
             reply_to_content = reply_data['reply_to_content']
             
-            # Clean and truncate the original message content
-            reply_to_content = reply_to_content.strip()
-            if len(reply_to_content) > 50:
-                reply_to_content = reply_to_content[:47] + "..."
-            
-            # Clean any extra formatting characters
-            reply_to_content = reply_to_content.replace('**', '').replace('*', '').strip()
-            
-            reply_context = f"┌─ **💬 Replying to {reply_to_username}:** *{reply_to_content}*\n└─ "
+            # Use the reusable reply context formatter
+            reply_context = self._format_reply_context(reply_to_username, reply_to_content)
             print(f"📝 Adding reply context: {reply_context.strip()}")
         else:
             print(f"📝 No reply data found, sending as regular message")
         
-        # Create plain text message with room name and reply context
-        if reply_context:
-            # For replies, use the same header format as regular messages but with reply context
-            message_content = f"{original_message_url} • {reply_context}{original_message.author.mention}**: ** {original_message.content} \n\n"
-        else:
-            # For regular messages, use the original format
-            message_content = f"{original_message_url} • {original_message.author.mention}**: ** {original_message.content} \n\n"
+        # Use the reusable message formatter
+        message_content = self._format_global_message(original_message, reply_context)
         
         print(f"📝 Message content: {message_content[:100]}..." if len(message_content) > 100 else f"📝 Message content: {message_content}")
-        
-        # Handle attachments
-        if original_message.attachments:
-            attachment = original_message.attachments[0]
-            if attachment.content_type and attachment.content_type.startswith('image/'):
-                message_content += f"\n🖼️ Image: {attachment.url}"
-            else:
-                message_content += f"\n📎 Attachment: [{attachment.filename}]({attachment.url})"
         
         # Send to all other channels
         for channel_info in channels:

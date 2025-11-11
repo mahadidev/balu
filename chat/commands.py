@@ -1,7 +1,7 @@
 import discord
 from discord.ext import commands
 from discord import app_commands
-from chat.chat_manager import GlobalChatManager
+from chat import GlobalChatManager
 
 class GlobalChatCommands(commands.Cog):
     def __init__(self, bot):
