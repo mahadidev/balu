@@ -2,15 +2,11 @@ import os
 import asyncio
 import discord
 from discord.ext import commands
-import wavelink
-from move.voice_manager import VoiceManager
 from database.db_manager import DatabaseManager
 
 # Import command modules
 from core_commands import setup_core_commands
-from move.commands import setup_voice_commands
 from chat.commands import GlobalChatCommands
-from channel.commands import ChannelCommands
 
 # Load environment variables
 from dotenv import load_dotenv
@@ -19,38 +15,19 @@ load_dotenv()
 # Bot setup with intents
 intents = discord.Intents.default()
 intents.message_content = True
-intents.voice_states = True
 
 bot = commands.Bot(command_prefix='!', intents=intents)
 
-@bot.event
-async def on_wavelink_node_ready(payload: wavelink.NodeReadyEventPayload):
-    """Called when Wavelink node is ready"""
-    print(f"🎵 Wavelink Node connected: {payload.node!r} | Resumed: {payload.resumed}")
 
-@bot.event
-async def setup_hook():
-    """Setup hook to connect to Lavalink"""
-    print("🔗 Connecting to Lavalink server...")
-    try:
-        nodes = [wavelink.Node(uri="http://185.210.144.147:2333", password="youshallnotpass")]
-        await wavelink.Pool.connect(nodes=nodes, client=bot, cache_capacity=100)
-        print("✅ Connected to Lavalink server")
-    except Exception as e:
-        print(f"❌ Failed to connect to Lavalink: {e}")
-        print("💡 Make sure Lavalink server is running! Run: python start_lavalink.py")
 
-# Initialize voice manager and database
-voice_manager = None
+# Initialize database
 db_manager = None
 
 @bot.event
 async def on_ready():
-    global voice_manager, db_manager
+    global db_manager
     print('🎯 Bot ready event triggered')
     
-    print('🎤 Initializing voice manager...')
-    voice_manager = VoiceManager(bot)
     
     print('💾 Initializing database...')
     db_manager = DatabaseManager()
@@ -59,17 +36,7 @@ async def on_ready():
     setup_core_commands(bot)
     print('  ✅ Core commands loaded')
     
-    setup_voice_commands(bot, voice_manager)
-    print('  ✅ Voice commands loaded')
     
-    print('🎵 Loading Wavelink music system...')
-    try:
-        await bot.load_extension('music.player')
-        print('  ✅ Wavelink music system loaded')
-    except Exception as e:
-        print(f'  ❌ Failed to load music system: {e}')
-        import traceback
-        traceback.print_exc()
     
     # Debug: Print all registered commands
     print('📋 Registered commands:')
@@ -79,53 +46,40 @@ async def on_ready():
     print('💬 Adding chat system cog...')
     await bot.add_cog(GlobalChatCommands(bot))
     
-    print('📂 Adding channel management cog...')
-    try:
-        await bot.add_cog(ChannelCommands(bot))
-        print('✅ Channel commands loaded successfully')
-    except Exception as e:
-        print(f'❌ Failed to load channel commands: {e}')
-        import traceback
-        traceback.print_exc()
     
-    # Sync slash commands with timeout
+    # Only sync slash commands if needed (avoid rate limits)
     try:
-        print('🔄 Syncing slash commands...')
-        
-        # List all commands we're trying to sync
         all_commands = bot.tree.get_commands()
-        print(f'📋 Commands to sync: {len(all_commands)}')
-        for cmd in all_commands:
-            print(f'  - {cmd.name}: {cmd.description}')
-        
-        synced = await asyncio.wait_for(bot.tree.sync(), timeout=120.0)
-        print(f'✅ Synced {len(synced)} slash commands')
-        for cmd in synced:
-            print(f'  ✓ /{cmd.name}: {cmd.description}')
-    except discord.HTTPException as e:
-        if e.status == 400 and "Entry Point command" in str(e):
-            print('⚠️ Entry Point command detected, skipping sync to avoid conflicts...')
-            print('ℹ️ Commands are already registered with Discord. Bot will continue without sync.')
-            # Don't attempt retry for Entry Point errors as they cause timeouts
-            return
+        if len(all_commands) > 0:
+            print(f'📋 Found {len(all_commands)} slash commands to potentially sync')
+            
+            # Check if we should sync (avoid rate limiting)
+            should_sync = os.getenv('FORCE_COMMAND_SYNC', 'false').lower() == 'true'
+            
+            if should_sync:
+                print('🔄 Force syncing slash commands...')
+                synced = await asyncio.wait_for(bot.tree.sync(), timeout=60.0)
+                print(f'✅ Synced {len(synced)} slash commands')
+            else:
+                print('ℹ️ Skipping command sync to avoid rate limits. Set FORCE_COMMAND_SYNC=true in .env if needed.')
+                print('ℹ️ Commands should already be registered from previous runs.')
         else:
-            print(f'❌ Failed to sync commands: {e}')
-            # Try guild-specific sync as last resort
-            try:
-                print('🔄 Attempting guild-specific sync...')
-                for guild in bot.guilds:
-                    guild_synced = await bot.tree.sync(guild=guild)
-                    print(f'✅ Synced {len(guild_synced)} commands for guild: {guild.name}')
-            except Exception as guild_e:
-                print(f'❌ Guild sync also failed: {guild_e}')
+            print('ℹ️ No slash commands to sync')
+    except discord.HTTPException as e:
+        if e.status == 429:  # Rate limited
+            print('⚠️ Rate limited by Discord. Skipping command sync.')
+            print('ℹ️ Commands should already be registered from previous runs.')
+        elif e.status == 400 and "Entry Point command" in str(e):
+            print('⚠️ Entry Point command detected, skipping sync.')
+        else:
+            print(f'❌ Failed to sync commands: {e.status} - {e.text}')
     except asyncio.TimeoutError:
-        print('⏰ Slash command sync timed out after 2 minutes...')
-        print('ℹ️ This usually means Discord is experiencing high load or rate limiting.')
-        print('ℹ️ Bot will continue running. Commands may still work if previously registered.')
+        print('⚠️ Command sync timed out. Continuing without sync...')
     except Exception as e:
-        print(f'❌ Failed to sync commands: {e}')
+        print(f'⚠️ Command sync failed: {e}. Continuing...')
     
     print(f'✅ {bot.user.name} is online!')
+    print('ℹ️ Tip: If slash commands aren\'t working, set FORCE_COMMAND_SYNC=true in .env and restart once.')
 
 @bot.event
 async def on_disconnect():

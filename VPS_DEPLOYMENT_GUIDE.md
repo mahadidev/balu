@@ -1,4 +1,4 @@
-# Discord Music Bot VPS Deployment Guide
+# Discord Bot VPS Deployment Guide
 
 ## 🚀 Complete Setup Documentation
 
@@ -7,7 +7,6 @@
 - **Server**: srv748072
 - **User**: root
 - **Bot Directory**: `/root/mahadi/balu`
-- **Lavalink Port**: 2333
 - **Bot Name**: Balu
 
 ---
@@ -25,102 +24,10 @@ java --version
 
 ### 2. Install Python Dependencies
 ```bash
-# Install required Python packages
-pip install discord.py wavelink aiohttp python-dotenv
-
-# Or if using requirements.txt
+# Install required Python packages using requirements.txt
 pip install -r requirements.txt
 ```
 
----
-
-## 🎵 Lavalink Server Setup
-
-### 1. Download Lavalink
-```bash
-cd /root/mahadi/balu
-wget https://github.com/lavalink-devs/Lavalink/releases/latest/download/Lavalink.jar
-```
-
-### 2. Download YouTube Plugin
-```bash
-mkdir -p plugins
-cd plugins
-wget https://github.com/lavalink-devs/youtube-source/releases/latest/download/youtube-plugin-1.7.2.jar
-cd ..
-```
-
-### 3. Create Lavalink Configuration
-```bash
-nano application.yml
-```
-
-**application.yml content:**
-```yaml
-server:
-  port: 2333
-  address: 0.0.0.0
-
-lavalink:
-  plugins:
-    - dependency: "dev.lavalink.youtube:youtube-plugin:1.7.2"
-      repository: "https://maven.lavalink.dev/releases"
-  server:
-    password: "youshallnotpass"
-    sources:
-      youtube: true
-      soundcloud: true
-      bandcamp: true
-      http: true
-    playerUpdateInterval: 1
-    youtubeSearchEnabled: true
-    soundcloudSearchEnabled: true
-    bufferDurationMs: 400
-    frameBufferDurationMs: 2000
-    opusEncodingQuality: 10
-
-logging:
-  level:
-    root: INFO
-    lavalink: INFO
-
-plugins:
-  youtube:
-    enabled: true
-    allowSearch: true
-    allowDirectVideoIds: true
-    allowDirectPlaylistIds: true
-    clients:
-      - MUSIC
-      - WEB
-      - ANDROID_TESTSUITE
-      - TVHTML5EMBEDDED
-```
-
-### 4. Create Lavalink Service
-```bash
-sudo nano /etc/systemd/system/lavalink.service
-```
-
-**lavalink.service content:**
-```ini
-[Unit]
-Description=Lavalink Audio Server
-After=network.target
-
-[Service]
-Type=simple
-User=root
-WorkingDirectory=/root/mahadi/balu
-ExecStart=/usr/bin/java -Xmx2G -jar Lavalink.jar
-Restart=always
-RestartSec=15
-StandardOutput=journal
-StandardError=journal
-
-[Install]
-WantedBy=multi-user.target
-```
 
 ---
 
@@ -144,9 +51,8 @@ sudo nano /etc/systemd/system/discord-bot.service
 **discord-bot.service content:**
 ```ini
 [Unit]
-Description=Discord Music Bot
-After=network.target lavalink.service
-Requires=lavalink.service
+Description=Discord Bot
+After=network.target
 
 [Service]
 Type=simple
@@ -165,52 +71,40 @@ WantedBy=multi-user.target
 
 ## ⚡ Service Management Commands
 
-### Enable and Start Services
+### Enable and Start Service
 ```bash
 # Reload systemd daemon
 sudo systemctl daemon-reload
 
 # Enable auto-start on boot
-sudo systemctl enable lavalink
 sudo systemctl enable discord-bot
 
-# Start services
-sudo systemctl start lavalink
+# Start service
 sudo systemctl start discord-bot
 ```
 
 ### Check Service Status
 ```bash
-# Check individual services
-sudo systemctl status lavalink
+# Check service status
 sudo systemctl status discord-bot
 
 # Check if auto-start is enabled
-sudo systemctl is-enabled lavalink
 sudo systemctl is-enabled discord-bot
 
 # List enabled services
-sudo systemctl list-unit-files --state=enabled | grep -E "(lavalink|discord-bot)"
+sudo systemctl list-unit-files --state=enabled | grep discord-bot
 ```
 
-### Restart Services
+### Restart Service
 ```bash
-# Restart individual services
-sudo systemctl restart lavalink
+# Restart service
 sudo systemctl restart discord-bot
-
-# Restart both services
-sudo systemctl restart lavalink discord-bot
 ```
 
-### Stop Services
+### Stop Service
 ```bash
-# Stop individual services
-sudo systemctl stop lavalink
+# Stop service
 sudo systemctl stop discord-bot
-
-# Stop both services
-sudo systemctl stop lavalink discord-bot
 ```
 
 ---
@@ -219,26 +113,13 @@ sudo systemctl stop lavalink discord-bot
 
 ### View Real-time Logs
 ```bash
-# Lavalink logs only
-sudo journalctl -u lavalink -f
-
-# Discord bot logs only
+# Discord bot logs
 sudo journalctl -u discord-bot -f
-
-# Both services logs
-sudo journalctl -u lavalink -u discord-bot -f
 
 # Last 50 lines of logs
 sudo journalctl -u discord-bot -n 50
 ```
 
-### Test Lavalink Connection
-```bash
-# Test if Lavalink is responding
-curl http://localhost:2333/v4/info
-
-# Should return JSON with server information
-```
 
 ---
 
@@ -322,10 +203,9 @@ sudo ufw status
 ```
 
 ### Important Security Points
-1. **Password Protection**: Lavalink uses password `"youshallnotpass"`
-2. **Internal Network**: Bot connects to `localhost:2333` (secure)
-3. **Environment Variables**: Discord token stored in `.env` file
-4. **User Permissions**: Services run as root (adjust if needed)
+1. **Environment Variables**: Discord token stored in `.env` file
+2. **User Permissions**: Service runs as root (adjust if needed)
+3. **File Permissions**: Ensure proper access to bot files
 
 ---
 
@@ -334,16 +214,14 @@ sudo ufw status
 /root/mahadi/balu/
 ├── main.py                    # Bot main file
 ├── .env                       # Environment variables (Discord token)
-├── application.yml            # Lavalink configuration
-├── Lavalink.jar              # Lavalink server
-├── plugins/                   # Lavalink plugins
-│   └── youtube-plugin-1.7.2.jar
-├── music/                     # Bot music modules
-│   ├── player.py             # Main music player
-│   ├── playlist_manager.py   # Playlist management
-│   ├── track_history.py      # Track history
-│   └── controls.py           # Music controls UI
-└── requirements.txt          # Python dependencies
+├── core_commands.py           # Basic bot commands
+├── requirements.txt           # Python dependencies
+├── chat/                      # Global chat system
+│   ├── commands.py           # Chat commands
+│   └── chat_manager.py       # Chat management
+└── database/                  # Database management
+    ├── db_manager.py         # Database operations
+    └── __init__.py
 ```
 
 ---
@@ -384,14 +262,8 @@ chmod +x /root/update-bot.sh
 # If bot is stuck/unresponsive
 sudo systemctl restart discord-bot
 
-# If Lavalink issues
-sudo systemctl restart lavalink
-
-# Nuclear option - restart both
-sudo systemctl restart lavalink discord-bot
-
 # Check what's running
-ps aux | grep -E "(java|python.*main.py)"
+ps aux | grep "python.*main.py"
 ```
 
 ### System Info
@@ -401,42 +273,35 @@ htop
 df -h
 free -h
 
-# Check Java process
-ps aux | grep java
+# Check bot process
+ps aux | grep "python.*main.py"
 ```
 
 ---
 
 ## ✅ Deployment Checklist
 
-- [x] Java 17 installed
 - [x] Python dependencies installed
-- [x] Lavalink.jar downloaded
-- [x] YouTube plugin downloaded
-- [x] application.yml configured
-- [x] lavalink.service created and enabled
-- [x] Discord bot token configured
+- [x] Discord bot token configured in .env
 - [x] discord-bot.service created and enabled
-- [x] Both services auto-start on boot
-- [x] Lavalink responding on port 2333
-- [x] Bot connected to Lavalink
+- [x] Service auto-starts on boot
 - [x] Bot online and responding to commands
+- [x] Chat features functional
 
 ---
 
 ## 📝 Notes
 
-- **Server Reboot Safe**: Both services start automatically after reboot
+- **Server Reboot Safe**: Service starts automatically after reboot
 - **Log Rotation**: Systemd handles log rotation automatically
-- **Memory Usage**: Lavalink allocated 2GB RAM (`-Xmx2G`)
-- **Restart Policy**: Services auto-restart if they crash
-- **Last Updated**: November 9, 2025
+- **Restart Policy**: Service auto-restarts if it crashes
+- **Last Updated**: November 10, 2025 - Removed music, move, and channel features
 
 ---
 
-**🎉 Your Discord Music Bot is fully deployed and operational on VPS!**
+**🎉 Your Discord Bot is fully deployed and operational on VPS!**
 
 For support or issues, check the logs first:
 ```bash
-sudo journalctl -u discord-bot -u lavalink -f
+sudo journalctl -u discord-bot -f
 ```

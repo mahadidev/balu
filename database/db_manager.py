@@ -70,6 +70,25 @@ class DatabaseManager:
                 )
             ''')
             
+            # Create room_permissions table
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS room_permissions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    room_name TEXT NOT NULL,
+                    allow_urls BOOLEAN DEFAULT FALSE,
+                    allow_files BOOLEAN DEFAULT FALSE,
+                    enable_bad_word_filter BOOLEAN DEFAULT TRUE,
+                    max_message_length INTEGER DEFAULT 2000,
+                    rate_limit_seconds INTEGER DEFAULT 3,
+                    allow_mentions BOOLEAN DEFAULT TRUE,
+                    allow_emojis BOOLEAN DEFAULT TRUE,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_by TEXT,
+                    UNIQUE(room_name),
+                    FOREIGN KEY (room_name) REFERENCES global_chat_rooms (room_name)
+                )
+            ''')
+            
             
             # Insert default settings
             default_settings = [
@@ -91,7 +110,7 @@ class DatabaseManager:
             conn.commit()
     
     def create_chat_room(self, room_name, created_by, max_servers=50):
-        """Create a new chat room"""
+        """Create a new chat room and return room ID"""
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
             
@@ -114,7 +133,17 @@ class DatabaseManager:
                     INSERT INTO global_chat_rooms (room_name, created_by, created_at, max_servers)
                     VALUES (?, ?, ?, ?)
                 ''', (normalized_name, created_by, dhaka_time, max_servers))
-                return True
+                
+                # Get the room ID that was just created
+                room_id = cursor.lastrowid
+                
+                # Create default permissions for the new room using room_id
+                cursor.execute('''
+                    INSERT INTO room_permissions (room_name, updated_by, updated_at)
+                    VALUES (?, ?, ?)
+                ''', (normalized_name, created_by, dhaka_time))
+                
+                return room_id
             except sqlite3.IntegrityError:
                 return False
     
@@ -351,4 +380,135 @@ class DatabaseManager:
                 (setting_name, setting_value, updated_at)
                 VALUES (?, ?, ?)
             ''', (setting_name, setting_value, dhaka_time))
+    
+    def get_room_permissions(self, room_name):
+        """Get permissions for a specific room"""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT allow_urls, allow_files, enable_bad_word_filter, 
+                       max_message_length, rate_limit_seconds, allow_mentions, allow_emojis
+                FROM room_permissions 
+                WHERE room_name = ?
+            ''', (room_name,))
+            
+            result = cursor.fetchone()
+            if result:
+                return {
+                    'allow_urls': bool(result[0]),
+                    'allow_files': bool(result[1]),
+                    'enable_bad_word_filter': bool(result[2]),
+                    'max_message_length': result[3],
+                    'rate_limit_seconds': result[4],
+                    'allow_mentions': bool(result[5]),
+                    'allow_emojis': bool(result[6])
+                }
+            else:
+                # Return default permissions
+                return {
+                    'allow_urls': False,
+                    'allow_files': False,
+                    'enable_bad_word_filter': True,
+                    'max_message_length': 2000,
+                    'rate_limit_seconds': 3,
+                    'allow_mentions': True,
+                    'allow_emojis': True
+                }
+    
+    def update_room_permission(self, room_name, permission_name, value, updated_by):
+        """Update a specific permission for a room"""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            dhaka_time = datetime.now(self.timezone).strftime('%Y-%m-%d %H:%M:%S')
+            
+            # First ensure the room has permissions entry
+            cursor.execute('''
+                INSERT OR IGNORE INTO room_permissions (room_name, updated_by, updated_at)
+                VALUES (?, ?, ?)
+            ''', (room_name, updated_by, dhaka_time))
+            
+            # Update the specific permission
+            query = f'''
+                UPDATE room_permissions 
+                SET {permission_name} = ?, updated_by = ?, updated_at = ?
+                WHERE room_name = ?
+            '''
+            cursor.execute(query, (value, updated_by, dhaka_time, room_name))
+            return cursor.rowcount > 0
+    
+    def is_room_owner(self, room_name, user_id):
+        """Check if user is the owner of the room"""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT created_by FROM global_chat_rooms 
+                WHERE room_name = ? AND created_by = ?
+            ''', (room_name, user_id))
+            return cursor.fetchone() is not None
+    
+    def get_room_owner(self, room_name):
+        """Get the owner of a room"""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT created_by FROM global_chat_rooms 
+                WHERE room_name = ?
+            ''', (room_name,))
+            result = cursor.fetchone()
+            return result[0] if result else None
+    
+    def get_room_by_id(self, room_id):
+        """Get room details by room ID"""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT id, room_name, created_by, created_at, max_servers 
+                FROM global_chat_rooms 
+                WHERE id = ? AND is_active = TRUE
+            ''', (room_id,))
+            result = cursor.fetchone()
+            if result:
+                return {
+                    'id': result[0],
+                    'room_name': result[1],
+                    'created_by': result[2],
+                    'created_at': result[3],
+                    'max_servers': result[4]
+                }
+            return None
+    
+    def get_room_id_by_name(self, room_name):
+        """Get room ID by room name"""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT id FROM global_chat_rooms 
+                WHERE room_name = ? AND is_active = TRUE
+            ''', (room_name,))
+            result = cursor.fetchone()
+            return result[0] if result else None
+    
+    def is_room_owner_by_id(self, room_id, user_id):
+        """Check if user is the owner of the room by room ID"""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT created_by FROM global_chat_rooms 
+                WHERE id = ? AND created_by = ? AND is_active = TRUE
+            ''', (room_id, user_id))
+            return cursor.fetchone() is not None
+    
+    def get_room_permissions_by_id(self, room_id):
+        """Get permissions for a room by room ID"""
+        room = self.get_room_by_id(room_id)
+        if not room:
+            return None
+        return self.get_room_permissions(room['room_name'])
+    
+    def update_room_permission_by_id(self, room_id, permission_name, value, updated_by):
+        """Update a specific permission for a room by room ID"""
+        room = self.get_room_by_id(room_id)
+        if not room:
+            return False
+        return self.update_room_permission(room['room_name'], permission_name, value, updated_by)
     
