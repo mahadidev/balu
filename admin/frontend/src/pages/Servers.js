@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useWebSocket } from '../hooks/useWebSocket';
 import LoadingSpinner from '../components/LoadingSpinner';
-import apiService from '../services/api';
+import { serversApi, analyticsApi } from '../services/api';
 
 function Servers() {
   const [servers, setServers] = useState([]);
@@ -30,8 +30,8 @@ function Servers() {
 
   const fetchServers = async () => {
     try {
-      const data = await apiService.get('/api/servers');
-      setServers(data);
+      const response = await serversApi.getAll();
+      setServers(response.data);
       setError(null);
     } catch (err) {
       setError('Failed to load servers');
@@ -43,8 +43,8 @@ function Servers() {
 
   const fetchStats = async () => {
     try {
-      const data = await apiService.get('/api/stats/servers');
-      setStats(data);
+      const response = await analyticsApi.getLiveStats();
+      setStats(response.data);
     } catch (err) {
       console.error('Error fetching server stats:', err);
     }

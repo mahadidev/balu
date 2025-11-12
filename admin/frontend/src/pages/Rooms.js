@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useWebSocket } from '../hooks/useWebSocket';
 import LoadingSpinner from '../components/LoadingSpinner';
-import apiService from '../services/api';
+import { useWebSocket } from '../hooks/useWebSocket';
+import { roomsApi } from '../services/api';
 
 function Rooms() {
   const [rooms, setRooms] = useState([]);
@@ -11,6 +11,15 @@ function Rooms() {
   const [creating, setCreating] = useState(false);
   const [newRoomName, setNewRoomName] = useState('');
   const [newRoomDescription, setNewRoomDescription] = useState('');
+  const [roomPermissions, setRoomPermissions] = useState({
+    allow_urls: true,
+    allow_files: true,
+    allow_mentions: true,
+    allow_emojis: true,
+    enable_bad_word_filter: false,
+    max_message_length: 2000,
+    rate_limit_seconds: 5
+  });
   const { wsData } = useWebSocket();
 
   useEffect(() => {
@@ -25,8 +34,8 @@ function Rooms() {
 
   const fetchRooms = async () => {
     try {
-      const data = await apiService.get('/api/rooms');
-      setRooms(data);
+      const response = await roomsApi.getAll();
+      setRooms(response.data);
       setError(null);
     } catch (err) {
       setError('Failed to load rooms');
@@ -42,12 +51,22 @@ function Rooms() {
     
     setCreating(true);
     try {
-      await apiService.post('/api/rooms', {
+      await roomsApi.create({
         name: newRoomName.trim(),
-        description: newRoomDescription.trim()
+        max_servers: 50,
+        permissions: roomPermissions
       });
       setNewRoomName('');
       setNewRoomDescription('');
+      setRoomPermissions({
+        allow_urls: true,
+        allow_files: true,
+        allow_mentions: true,
+        allow_emojis: true,
+        enable_bad_word_filter: false,
+        max_message_length: 2000,
+        rate_limit_seconds: 5
+      });
       fetchRooms();
     } catch (err) {
       setError('Failed to create room');
@@ -55,6 +74,13 @@ function Rooms() {
     } finally {
       setCreating(false);
     }
+  };
+
+  const updatePermission = (key, value) => {
+    setRoomPermissions(prev => ({
+      ...prev,
+      [key]: value
+    }));
   };
 
   if (loading) return <LoadingSpinner />;
@@ -105,6 +131,104 @@ function Rooms() {
               />
             </div>
           </div>
+
+          {/* Room Permissions */}
+          <div className="border-t pt-4">
+            <h3 className="text-md font-medium text-gray-900 mb-3">Room Permissions</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-3">
+                <div className="flex items-center">
+                  <input
+                    id="allow_urls"
+                    type="checkbox"
+                    checked={roomPermissions.allow_urls}
+                    onChange={(e) => updatePermission('allow_urls', e.target.checked)}
+                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                  />
+                  <label htmlFor="allow_urls" className="ml-2 text-sm text-gray-700">
+                    Allow URLs
+                  </label>
+                </div>
+                <div className="flex items-center">
+                  <input
+                    id="allow_files"
+                    type="checkbox"
+                    checked={roomPermissions.allow_files}
+                    onChange={(e) => updatePermission('allow_files', e.target.checked)}
+                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                  />
+                  <label htmlFor="allow_files" className="ml-2 text-sm text-gray-700">
+                    Allow Files
+                  </label>
+                </div>
+                <div className="flex items-center">
+                  <input
+                    id="allow_mentions"
+                    type="checkbox"
+                    checked={roomPermissions.allow_mentions}
+                    onChange={(e) => updatePermission('allow_mentions', e.target.checked)}
+                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                  />
+                  <label htmlFor="allow_mentions" className="ml-2 text-sm text-gray-700">
+                    Allow Mentions
+                  </label>
+                </div>
+                <div className="flex items-center">
+                  <input
+                    id="allow_emojis"
+                    type="checkbox"
+                    checked={roomPermissions.allow_emojis}
+                    onChange={(e) => updatePermission('allow_emojis', e.target.checked)}
+                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                  />
+                  <label htmlFor="allow_emojis" className="ml-2 text-sm text-gray-700">
+                    Allow Emojis
+                  </label>
+                </div>
+              </div>
+              <div className="space-y-3">
+                <div className="flex items-center">
+                  <input
+                    id="enable_bad_word_filter"
+                    type="checkbox"
+                    checked={roomPermissions.enable_bad_word_filter}
+                    onChange={(e) => updatePermission('enable_bad_word_filter', e.target.checked)}
+                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                  />
+                  <label htmlFor="enable_bad_word_filter" className="ml-2 text-sm text-gray-700">
+                    Enable Bad Word Filter
+                  </label>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">
+                    Max Message Length
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="4000"
+                    value={roomPermissions.max_message_length}
+                    onChange={(e) => updatePermission('max_message_length', parseInt(e.target.value) || 2000)}
+                    className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">
+                    Rate Limit (seconds)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="60"
+                    value={roomPermissions.rate_limit_seconds}
+                    onChange={(e) => updatePermission('rate_limit_seconds', parseInt(e.target.value) || 5)}
+                    className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div>
             <button
               type="submit"

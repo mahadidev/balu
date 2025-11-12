@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import LoadingSpinner from '../components/LoadingSpinner';
-import apiService from '../services/api';
+import { serversApi } from '../services/api';
 
 function ServerDetails() {
   const { guildId } = useParams();
@@ -18,12 +18,12 @@ function ServerDetails() {
     try {
       setLoading(true);
       const [serverData, channelsData] = await Promise.all([
-        apiService.get(`/api/servers/${guildId}`),
-        apiService.get(`/api/servers/${guildId}/channels`)
+        serversApi.getById(guildId),
+        serversApi.getChannels(null, guildId)
       ]);
       
-      setServer(serverData);
-      setChannels(channelsData);
+      setServer(serverData.data);
+      setChannels(channelsData.data);
       setError(null);
     } catch (err) {
       setError('Failed to load server details');

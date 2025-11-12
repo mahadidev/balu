@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useWebSocket } from '../hooks/useWebSocket';
 import LoadingSpinner from '../components/LoadingSpinner';
-import apiService from '../services/api';
+import { roomsApi } from '../services/api';
 
 function RoomDetails() {
   const { roomId } = useParams();
@@ -26,15 +26,14 @@ function RoomDetails() {
   const fetchRoomDetails = async () => {
     try {
       setLoading(true);
-      const [roomData, channelsData, messagesData] = await Promise.all([
-        apiService.get(`/api/rooms/${roomId}`),
-        apiService.get(`/api/rooms/${roomId}/channels`),
-        apiService.get(`/api/rooms/${roomId}/messages?limit=50`)
+      const [roomData, channelsData] = await Promise.all([
+        roomsApi.getById(roomId),
+        roomsApi.getChannels(roomId)
       ]);
       
-      setRoom(roomData);
-      setChannels(channelsData);
-      setMessages(messagesData);
+      setRoom(roomData.data);
+      setChannels(channelsData.data);
+      setMessages([]);
       setError(null);
     } catch (err) {
       setError('Failed to load room details');

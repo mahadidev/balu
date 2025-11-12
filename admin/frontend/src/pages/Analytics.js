@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useWebSocket } from '../hooks/useWebSocket';
 import LoadingSpinner from '../components/LoadingSpinner';
-import apiService from '../services/api';
+import { analyticsApi } from '../services/api';
 
 function Analytics() {
   const [loading, setLoading] = useState(true);
@@ -34,8 +34,23 @@ function Analytics() {
   const fetchAnalytics = async () => {
     try {
       setLoading(true);
-      const data = await apiService.get(`/api/analytics?range=${timeRange}`);
-      setAnalytics(data);
+      const response = await analyticsApi.getLiveStats();
+      
+      // Ensure the data structure matches what the component expects
+      const data = response.data || {};
+      setAnalytics({
+        overview: {
+          total_messages: data.total_messages || 0,
+          total_servers: data.total_servers || 0,
+          total_rooms: data.total_rooms || 0,
+          active_users: data.active_users || 0,
+          ...data.overview
+        },
+        daily_stats: data.daily_stats || [],
+        top_rooms: data.top_rooms || [],
+        top_servers: data.top_servers || [],
+        hourly_activity: data.hourly_activity || []
+      });
       setError(null);
     } catch (err) {
       setError('Failed to load analytics');
@@ -99,7 +114,7 @@ function Analytics() {
                     Total Messages
                   </dt>
                   <dd className="text-lg font-medium text-gray-900">
-                    {formatNumber(analytics.overview.total_messages)}
+                    {formatNumber(analytics.overview?.total_messages || 0)}
                   </dd>
                 </dl>
               </div>
@@ -119,7 +134,7 @@ function Analytics() {
                     Connected Servers
                   </dt>
                   <dd className="text-lg font-medium text-gray-900">
-                    {analytics.overview.total_servers}
+                    {analytics.overview?.total_servers || 0}
                   </dd>
                 </dl>
               </div>
@@ -139,7 +154,7 @@ function Analytics() {
                     Active Rooms
                   </dt>
                   <dd className="text-lg font-medium text-gray-900">
-                    {analytics.overview.total_rooms}
+                    {analytics.overview?.total_rooms || 0}
                   </dd>
                 </dl>
               </div>
@@ -159,7 +174,7 @@ function Analytics() {
                     Active Users
                   </dt>
                   <dd className="text-lg font-medium text-gray-900">
-                    {formatNumber(analytics.overview.active_users)}
+                    {formatNumber(analytics.overview?.active_users || 0)}
                   </dd>
                 </dl>
               </div>
@@ -174,11 +189,11 @@ function Analytics() {
           <h2 className="text-lg font-medium text-gray-900">Daily Message Activity</h2>
         </div>
         <div className="p-6">
-          {analytics.daily_stats.length === 0 ? (
+          {(analytics.daily_stats || []).length === 0 ? (
             <p className="text-center text-gray-500">No data available for the selected time range.</p>
           ) : (
             <div className="space-y-3">
-              {analytics.daily_stats.map((day, index) => (
+              {(analytics.daily_stats || []).map((day, index) => (
                 <div key={index} className="flex items-center space-x-4">
                   <div className="w-20 text-sm text-gray-600 flex-shrink-0">
                     {formatDate(day.date)}
@@ -188,7 +203,7 @@ function Analytics() {
                       <div 
                         className="bg-blue-600 h-2 rounded-full transition-all duration-500"
                         style={{
-                          width: `${Math.max(2, (day.message_count / Math.max(...analytics.daily_stats.map(d => d.message_count))) * 100)}%`
+                          width: `${Math.max(2, (day.message_count / Math.max(...(analytics.daily_stats || []).map(d => d.message_count))) * 100)}%`
                         }}
                       ></div>
                     </div>
@@ -210,11 +225,11 @@ function Analytics() {
             <h2 className="text-lg font-medium text-gray-900">Most Active Rooms</h2>
           </div>
           <div className="p-6">
-            {analytics.top_rooms.length === 0 ? (
+            {(analytics.top_rooms || []).length === 0 ? (
               <p className="text-center text-gray-500">No room data available.</p>
             ) : (
               <div className="space-y-3">
-                {analytics.top_rooms.slice(0, 10).map((room, index) => (
+                {(analytics.top_rooms || []).slice(0, 10).map((room, index) => (
                   <div key={room.id} className="flex items-center justify-between">
                     <div className="flex items-center space-x-3">
                       <div className="flex-shrink-0 w-6 text-sm text-gray-500">
@@ -245,11 +260,11 @@ function Analytics() {
             <h2 className="text-lg font-medium text-gray-900">Most Active Servers</h2>
           </div>
           <div className="p-6">
-            {analytics.top_servers.length === 0 ? (
+            {(analytics.top_servers || []).length === 0 ? (
               <p className="text-center text-gray-500">No server data available.</p>
             ) : (
               <div className="space-y-3">
-                {analytics.top_servers.slice(0, 10).map((server, index) => (
+                {(analytics.top_servers || []).slice(0, 10).map((server, index) => (
                   <div key={server.guild_id} className="flex items-center justify-between">
                     <div className="flex items-center space-x-3">
                       <div className="flex-shrink-0 w-6 text-sm text-gray-500">
@@ -296,13 +311,13 @@ function Analytics() {
           <h2 className="text-lg font-medium text-gray-900">Hourly Activity Pattern</h2>
         </div>
         <div className="p-6">
-          {analytics.hourly_activity.length === 0 ? (
+          {(analytics.hourly_activity || []).length === 0 ? (
             <p className="text-center text-gray-500">No hourly data available.</p>
           ) : (
             <div className="grid grid-cols-12 gap-2">
               {Array.from({ length: 24 }, (_, hour) => {
-                const hourData = analytics.hourly_activity.find(h => h.hour === hour) || { message_count: 0 };
-                const maxMessages = Math.max(...analytics.hourly_activity.map(h => h.message_count));
+                const hourData = (analytics.hourly_activity || []).find(h => h.hour === hour) || { message_count: 0 };
+                const maxMessages = Math.max(...(analytics.hourly_activity || []).map(h => h.message_count));
                 const height = maxMessages > 0 ? (hourData.message_count / maxMessages) * 100 : 0;
                 
                 return (

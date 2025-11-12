@@ -1,7 +1,9 @@
 import axios from 'axios';
 
-// Base API configuration
-const API_BASE_URL = process.env.REACT_APP_API_URL || '/api';
+// Base API configuration  
+const API_BASE_URL = process.env.REACT_APP_API_URL || (window.location.origin + '/api');
+
+console.log("API_BASE_URL",API_BASE_URL);
 
 // Create axios instance
 const api = axios.create({
@@ -49,9 +51,9 @@ export const authApi = {
 
 // Rooms API
 export const roomsApi = {
-  getAll: (includeInactive = false) => api.get('/rooms', { params: { include_inactive: includeInactive } }),
+  getAll: (includeInactive = false) => api.get('/rooms/', { params: { include_inactive: includeInactive } }),
   getById: (id) => api.get(`/rooms/${id}`),
-  create: (data) => api.post('/rooms', data),
+  create: (data) => api.post('/rooms/', data),
   update: (id, data) => api.put(`/rooms/${id}`, data),
   delete: (id) => api.delete(`/rooms/${id}`),
   
@@ -67,7 +69,7 @@ export const roomsApi = {
 
 // Servers API
 export const serversApi = {
-  getAll: (activeOnly = true) => api.get('/servers', { params: { active_only: activeOnly } }),
+  getAll: (activeOnly = true) => api.get('/servers/', { params: { active_only: activeOnly } }),
   getById: (guildId) => api.get(`/servers/${guildId}`),
   getChannels: (roomId, guildId) => api.get('/servers/channels', { 
     params: { room_id: roomId, guild_id: guildId } 

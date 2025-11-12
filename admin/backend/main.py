@@ -90,10 +90,16 @@ class LoginRequest(BaseModel):
 async def working_login(request: LoginRequest):
     """Working login endpoint."""
     if request.username == "admin" and request.password == "admin123":
+        # Generate proper JWT token
+        access_token = security_manager.create_session_token(
+            user_id=1,
+            username="admin", 
+            is_superuser=True
+        )
         return {
-            "access_token": "test-token-123", 
+            "access_token": access_token, 
             "token_type": "bearer",
-            "expires_in": 86400,
+            "expires_in": settings.access_token_expire_minutes * 60,
             "user_info": {
                 "id": 1,
                 "username": "admin",

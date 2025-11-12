@@ -4,7 +4,7 @@ Handles room CRUD operations, permissions, and channel management.
 """
 
 from typing import List, Dict, Any, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Depends, Query
 from pydantic import BaseModel, Field
 
@@ -27,6 +27,7 @@ class RoomResponse(BaseModel):
 class CreateRoomRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=100, description="Room name")
     max_servers: int = Field(50, ge=1, le=200, description="Maximum servers allowed")
+    permissions: Optional[Dict[str, Any]] = Field(None, description="Room permissions")
 
 class UpdateRoomRequest(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=100)
@@ -77,6 +78,7 @@ router = APIRouter(prefix="/rooms", tags=["rooms"])
 # ROOM OPERATIONS
 # ============================================================================
 
+@router.get("", response_model=List[RoomResponse])
 @router.get("/", response_model=List[RoomResponse])
 async def list_rooms(
     include_inactive: bool = Query(False, description="Include inactive rooms"),
@@ -150,17 +152,28 @@ async def create_room(
                 detail="Failed to create room"
             )
         
-        # Get created room data
-        room_data = await db_manager.get_room_by_name(request.name)
-        if not room_data:
-            raise HTTPException(
-                status_code=500,
-                detail="Failed to retrieve created room"
-            )
-        
-        # Get permissions and channels for cache warmup
-        permissions = await db_manager.get_room_permissions(room_id)
+        # Get channels for cache warmup
         channels = await db_manager.get_room_channels(room_id)
+        
+        # Set permissions if provided in request
+        if request.permissions:
+            # TODO: Implement permission setting in database manager
+            # For now, we'll just get default permissions
+            permissions = await db_manager.get_room_permissions(room_id)
+        else:
+            # Get default permissions
+            permissions = await db_manager.get_room_permissions(room_id)
+        
+        # Construct room data manually since get_room_by_name doesn't include channel_count
+        room_data = {
+            'id': room_id,
+            'name': request.name,
+            'created_by': current_user.get("username", "admin"),
+            'created_at': datetime.utcnow(),
+            'is_active': True,
+            'max_servers': request.max_servers,
+            'channel_count': len(channels)
+        }
         
         # Warmup cache
         await cache_manager.warmup_cache(room_data, channels, permissions)
