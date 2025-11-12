@@ -89,7 +89,18 @@ class LoginRequest(BaseModel):
 @app.post("/api/auth/login")
 async def working_login(request: LoginRequest):
     """Working login endpoint."""
-    return {"message": "success", "token": "test123"}
+    if request.username == "admin" and request.password == "admin123":
+        return {
+            "access_token": "test-token-123", 
+            "token_type": "bearer",
+            "expires_in": 86400,
+            "user_info": {
+                "id": 1,
+                "username": "admin",
+                "is_superuser": True
+            }
+        }
+    return {"detail": "Invalid credentials"}
 
 # Include API routers
 app.include_router(auth_router, prefix="/api")
