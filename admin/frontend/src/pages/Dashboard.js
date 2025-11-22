@@ -22,6 +22,7 @@ ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarEleme
 
 const Dashboard = () => {
   const { liveStats, isConnected } = useWebSocket();
+  const [fallbackStats, setFallbackStats] = useState(null);
   const [messageStats, setMessageStats] = useState(null);
   const [systemHealth, setSystemHealth] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -33,13 +34,23 @@ const Dashboard = () => {
 
   const loadDashboardData = async () => {
     try {
-      const [messageStatsResponse, healthResponse] = await Promise.all([
+      const [messageStatsResponse, healthResponse, liveStatsResponse] = await Promise.all([
         analyticsApi.getMessageStats(7),
-        analyticsApi.getSystemHealth()
+        analyticsApi.getSystemHealth(),
+        analyticsApi.getLiveStats()
       ]);
 
+      console.log('📊 Message stats response:', messageStatsResponse.data);
+      console.log('📊 Daily stats array:', messageStatsResponse.data?.daily_stats);
       setMessageStats(messageStatsResponse.data);
       setSystemHealth(healthResponse.data);
+      
+      // Store live stats for when WebSocket data isn't available
+      if (liveStatsResponse.data) {
+        console.log('📊 Loaded live stats from API:', liveStatsResponse.data);
+        setFallbackStats(liveStatsResponse.data);
+      }
+      
     } catch (error) {
       console.error('Error loading dashboard data:', error);
     } finally {
@@ -53,11 +64,14 @@ const Dashboard = () => {
     setRefreshing(false);
   };
 
+  // Use WebSocket live stats if available, otherwise fallback to API stats
+  const currentStats = liveStats || fallbackStats;
+  
   // Stats cards data
   const statsCards = [
     {
       title: 'Active Rooms',
-      value: liveStats?.active_rooms || 0,
+      value: currentStats?.active_rooms || 0,
       icon: MessageSquare,
       color: 'blue',
       change: '+12%',
@@ -65,7 +79,7 @@ const Dashboard = () => {
     },
     {
       title: 'Connected Servers',
-      value: liveStats?.active_channels || 0,
+      value: currentStats?.active_channels || 0,
       icon: Server,
       color: 'green',
       change: '+8%',
@@ -73,7 +87,7 @@ const Dashboard = () => {
     },
     {
       title: 'Messages Today',
-      value: liveStats?.messages_last_day || 0,
+      value: currentStats?.messages_last_day || 0,
       icon: Activity,
       color: 'purple',
       change: '+24%',
@@ -81,7 +95,7 @@ const Dashboard = () => {
     },
     {
       title: 'Messages/Hour',
-      value: liveStats?.messages_last_hour || 0,
+      value: currentStats?.messages_last_hour || 0,
       icon: TrendingUp,
       color: 'orange',
       change: '+5%',
@@ -89,15 +103,34 @@ const Dashboard = () => {
     }
   ];
 
+  // Generate sample data if no real data exists
+  const generateSampleData = () => {
+    const sampleData = [];
+    for (let i = 6; i >= 0; i--) {
+      const date = new Date();
+      date.setDate(date.getDate() - i);
+      sampleData.push({
+        date: date.toISOString().split('T')[0],
+        count: 0
+      });
+    }
+    return sampleData;
+  };
+
+  // Use real data if available, otherwise show empty data for chart
+  const chartDataSource = messageStats?.daily_stats?.length > 0 
+    ? messageStats.daily_stats 
+    : generateSampleData();
+
   // Chart data
   const chartData = {
-    labels: messageStats?.daily_stats?.map(stat => 
+    labels: chartDataSource.map(stat => 
       new Date(stat.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-    ) || [],
+    ),
     datasets: [
       {
         label: 'Messages',
-        data: messageStats?.daily_stats?.map(stat => stat.count) || [],
+        data: chartDataSource.map(stat => stat.count || stat.message_count || 0),
         borderColor: 'rgb(59, 130, 246)',
         backgroundColor: 'rgba(59, 130, 246, 0.1)',
         tension: 0.4,
@@ -221,7 +254,7 @@ const Dashboard = () => {
           </div>
           <div className="card-body">
             <div className="chart-container">
-              {messageStats?.daily_stats ? (
+              {messageStats ? (
                 <Line data={chartData} options={chartOptions} />
               ) : (
                 <div className="flex items-center justify-center h-full">

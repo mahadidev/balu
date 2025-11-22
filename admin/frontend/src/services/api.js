@@ -65,6 +65,9 @@ export const roomsApi = {
   getChannels: (id) => api.get(`/rooms/${id}/channels`),
   registerChannel: (id, data) => api.post(`/rooms/${id}/channels`, data),
   unregisterChannel: (id, guildId, channelId) => api.delete(`/rooms/${id}/channels/${guildId}/${channelId}`),
+  
+  // Messages
+  getMessages: (id, limit = 50, offset = 0) => api.get(`/rooms/${id}/messages`, { params: { limit, offset } }),
 };
 
 // Servers API
@@ -80,6 +83,12 @@ export const serversApi = {
   // Bulk operations
   refreshCache: () => api.post('/servers/bulk/refresh-cache'),
   unregisterChannel: (guildId, channelId) => api.delete(`/servers/channels/${guildId}/${channelId}`),
+  
+  // Server banning
+  getBannedServers: (includeInactive = false) => api.get('/servers/banned-list', { params: { include_inactive: includeInactive } }),
+  banServer: (data) => api.post('/servers/bans', data),
+  unbanServer: (guildId) => api.delete(`/servers/bans/${guildId}`),
+  checkBanStatus: (guildId) => api.get(`/servers/bans/${guildId}`),
 };
 
 // Analytics API
@@ -98,6 +107,8 @@ export const analyticsApi = {
 export const systemApi = {
   getStatus: () => api.get('/status'),
   getInfo: () => api.get('/info'),
+  clearData: (options = {}) => api.post('/rooms/clear-data'),
+  resetSettings: () => api.post('/system/reset-settings'),
 };
 
 // WebSocket connection helper
@@ -105,18 +116,23 @@ export const createWebSocketConnection = (onMessage, onError, onOpen, onClose) =
   const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   const wsUrl = `${wsProtocol}//${window.location.host}/ws`;
   
+  console.log('🔌 Attempting WebSocket connection to:', wsUrl);
+  
   const ws = new WebSocket(wsUrl);
   
   ws.onopen = (event) => {
-    console.log('WebSocket connected');
+    console.log('✅ WebSocket connected successfully');
     
     // Authenticate the connection
     const token = localStorage.getItem('token');
     if (token) {
+      console.log('🔑 Sending authentication token...');
       ws.send(JSON.stringify({
         type: 'authenticate',
         token: token
       }));
+    } else {
+      console.warn('⚠️ No authentication token found in localStorage');
     }
     
     if (onOpen) onOpen(event);
@@ -125,19 +141,24 @@ export const createWebSocketConnection = (onMessage, onError, onOpen, onClose) =
   ws.onmessage = (event) => {
     try {
       const data = JSON.parse(event.data);
+      console.log('📨 WebSocket message received:', data);
       if (onMessage) onMessage(data);
     } catch (error) {
-      console.error('WebSocket message parse error:', error);
+      console.error('❌ WebSocket message parse error:', error);
     }
   };
   
   ws.onerror = (error) => {
-    console.error('WebSocket error:', error);
+    console.error('❌ WebSocket error:', error);
     if (onError) onError(error);
   };
   
   ws.onclose = (event) => {
-    console.log('WebSocket disconnected:', event.reason);
+    console.log('🔌 WebSocket disconnected:', {
+      code: event.code,
+      reason: event.reason,
+      wasClean: event.wasClean
+    });
     if (onClose) onClose(event);
   };
   

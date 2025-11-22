@@ -92,6 +92,57 @@ function Settings() {
     }
   };
 
+  const handleClearData = async () => {
+    if (!window.confirm('⚠️ DANGER: This will COMPLETELY CLEAR the database!\n\nThis will permanently delete:\n- ALL messages\n- ALL rooms\n- ALL channels\n- ALL statistics\n- ALL cache data\n\nThis action CANNOT be undone!\n\nAre you absolutely sure?')) {
+      return;
+    }
+
+    try {
+      setSaving(true);
+      setError(null);
+      
+      const response = await systemApi.clearData({
+        keepRooms: true,
+        keepChannels: true
+      });
+      
+      if (response.data.success) {
+        setSuccess(`Data cleared successfully! Removed ${Object.values(response.data.cleared_items).reduce((a, b) => a + b, 0)} items.`);
+        setTimeout(() => setSuccess(null), 5000);
+      } else {
+        setError('Failed to clear data');
+      }
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Failed to clear data');
+      console.error('Error clearing data:', err);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleResetSettings = async () => {
+    if (!window.confirm('Are you sure you want to reset all settings to defaults? This cannot be undone.')) {
+      return;
+    }
+
+    try {
+      setSaving(true);
+      setError(null);
+      
+      await systemApi.resetSettings();
+      setSuccess('Settings reset to defaults successfully!');
+      setTimeout(() => setSuccess(null), 3000);
+      
+      // Reload settings
+      await fetchSettings();
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Failed to reset settings');
+      console.error('Error resetting settings:', err);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const updateSetting = (section, key, value) => {
     setSettings(prev => ({
       ...prev,
@@ -409,33 +460,27 @@ function Settings() {
                 </p>
               </div>
               <button
-                onClick={() => {
-                  if (window.confirm('Are you sure you want to reset all settings to defaults? This cannot be undone.')) {
-                    // Handle reset
-                  }
-                }}
-                className="inline-flex items-center px-4 py-2 border border-red-300 text-sm font-medium rounded-md text-red-700 bg-red-50 hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+                onClick={handleResetSettings}
+                disabled={saving}
+                className="inline-flex items-center px-4 py-2 border border-red-300 text-sm font-medium rounded-md text-red-700 bg-red-50 hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50"
               >
-                Reset Settings
+                {saving ? 'Resetting...' : 'Reset Settings'}
               </button>
             </div>
 
             <div className="flex justify-between items-start">
               <div>
-                <h3 className="text-sm font-medium text-gray-900">Clear All Data</h3>
-                <p className="text-sm text-gray-500 mt-1">
-                  Delete all messages, rooms, and statistics. This will keep server and channel registrations.
+                <h3 className="text-sm font-medium text-red-900">⚠️ Clear All Data (COMPLETE WIPE)</h3>
+                <p className="text-sm text-red-600 mt-1">
+                  <strong>PERMANENTLY DELETE EVERYTHING:</strong> All messages, rooms, channels, statistics, and cache data. This action cannot be undone!
                 </p>
               </div>
               <button
-                onClick={() => {
-                  if (window.confirm('Are you sure you want to clear all data? This will delete all messages and cannot be undone.')) {
-                    // Handle data clear
-                  }
-                }}
-                className="inline-flex items-center px-4 py-2 border border-red-300 text-sm font-medium rounded-md text-red-700 bg-red-50 hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+                onClick={handleClearData}
+                disabled={saving}
+                className="inline-flex items-center px-4 py-2 border border-red-600 text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50"
               >
-                Clear Data
+                {saving ? 'CLEARING ALL...' : '🗑️ CLEAR ALL DATA'}
               </button>
             </div>
           </div>

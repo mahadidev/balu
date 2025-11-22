@@ -12,10 +12,10 @@ from contextlib import asynccontextmanager
 import asyncpg
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import selectinload
-from sqlalchemy import select, func, and_, or_
+from sqlalchemy import select, func, and_, or_, text
 from sqlalchemy.exc import SQLAlchemyError
 
-from .models import Base, ChatRoom, ChatChannel, ChatMessage, RoomPermission, AdminUser, DailyStats
+from .models import Base, ChatRoom, ChatChannel, ChatMessage, RoomPermission, AdminUser, DailyStats, ServerBan
 
 
 class DatabaseManager:
@@ -203,18 +203,30 @@ class DatabaseManager:
                 result = await session.execute(query)
                 rooms = result.scalars().all()
                 
-                return [
-                    {
+                room_data = []
+                for room in rooms:
+                    # Get today's message count for this room
+                    messages_today_query = text("""
+                        SELECT COUNT(*) as count
+                        FROM chat_messages 
+                        WHERE room_id = :room_id 
+                        AND DATE(timestamp) = CURRENT_DATE
+                    """)
+                    messages_result = await session.execute(messages_today_query, {"room_id": room.id})
+                    messages_today = messages_result.scalar() or 0
+                    
+                    room_data.append({
                         'id': room.id,
                         'name': room.name,
                         'created_by': room.created_by,
                         'created_at': room.created_at,
                         'is_active': room.is_active,
                         'max_servers': room.max_servers,
-                        'channel_count': len([c for c in room.channels if c.is_active])
-                    }
-                    for room in rooms
-                ]
+                        'channel_count': len([c for c in room.channels if c.is_active]),
+                        'messages_today': messages_today
+                    })
+                
+                return room_data
         except Exception as e:
             print(f"❌ Get all rooms error: {e}")
             return []
@@ -255,24 +267,48 @@ class DatabaseManager:
                              guild_name: str, channel_name: str, registered_by: str) -> bool:
         """Register a Discord channel to a chat room."""
         try:
-            async with self.pool.acquire() as conn:
-                # Try insert, update if exists
-                await conn.execute("""
+            # First check if server is banned
+            if await self.is_server_banned(guild_id):
+                print(f"❌ Cannot register channel: Server {guild_id} ({guild_name}) is banned")
+                return False
+            
+            async with self.session() as session:
+                from sqlalchemy import text
+                from datetime import datetime
+                
+                # Try insert, update if exists using SQLAlchemy
+                await session.execute(text("""
                     INSERT INTO chat_channels (
                         guild_id, channel_id, guild_name, channel_name, 
-                        room_id, registered_by, is_active
-                    ) VALUES ($1, $2, $3, $4, $5, $6, true)
+                        room_id, registered_by, registered_at, is_active
+                    ) VALUES (:guild_id, :channel_id, :guild_name, :channel_name, :room_id, :registered_by, :registered_at, true)
                     ON CONFLICT (guild_id, channel_id) 
                     DO UPDATE SET 
-                        room_id = $5, 
-                        guild_name = $3, 
-                        channel_name = $4,
-                        registered_at = NOW(),
+                        room_id = :room_id, 
+                        guild_name = :guild_name, 
+                        channel_name = :channel_name,
+                        registered_at = :registered_at,
                         is_active = true
-                """, guild_id, channel_id, guild_name, channel_name, room_id, registered_by)
+                """), {
+                    'guild_id': guild_id, 
+                    'channel_id': channel_id, 
+                    'guild_name': guild_name, 
+                    'channel_name': channel_name, 
+                    'room_id': room_id, 
+                    'registered_by': registered_by,
+                    'registered_at': datetime.utcnow()
+                })
+                await session.commit()
             return True
         except Exception as e:
             print(f"❌ Register channel error: {e}")
+            print(f"   Guild ID: {guild_id}")
+            print(f"   Channel ID: {channel_id}")
+            print(f"   Room ID: {room_id}")
+            print(f"   Guild Name: {guild_name}")
+            print(f"   Channel Name: {channel_name}")
+            import traceback
+            traceback.print_exc()
             return False
     
     async def get_room_channels(self, room_id: int) -> List[Dict[str, Any]]:
@@ -304,6 +340,37 @@ class DatabaseManager:
             print(f"❌ Is channel registered error: {e}")
             return None
     
+    async def get_room_messages(self, room_id: int, limit: int = 50, offset: int = 0) -> List[Dict[str, Any]]:
+        """Get recent messages for a room."""
+        try:
+            async with self.pool.acquire() as conn:
+                results = await conn.fetch("""
+                    SELECT 
+                        cm.message_id,
+                        cm.guild_id,
+                        cm.channel_id,
+                        cm.user_id,
+                        cm.username,
+                        cm.guild_name,
+                        cm.content,
+                        cm.reply_to_message_id,
+                        cm.reply_to_username,
+                        cm.reply_to_content,
+                        cm.timestamp,
+                        cc.channel_name
+                    FROM chat_messages cm
+                    LEFT JOIN chat_channels cc ON cm.channel_id = cc.channel_id 
+                        AND cm.guild_id = cc.guild_id
+                    WHERE cm.room_id = $1 
+                    ORDER BY cm.timestamp DESC 
+                    LIMIT $2 OFFSET $3
+                """, room_id, limit, offset)
+                
+                return [dict(row) for row in results]
+        except Exception as e:
+            print(f"❌ Get room messages error: {e}")
+            return []
+    
     # ============================================================================
     # ANALYTICS & MONITORING (For Admin Panel)
     # ============================================================================
@@ -316,7 +383,7 @@ class DatabaseManager:
                 daily_stats = await conn.fetch("""
                     SELECT DATE(timestamp) as date, COUNT(*) as count
                     FROM chat_messages 
-                    WHERE timestamp >= NOW() - INTERVAL %s DAY
+                    WHERE timestamp >= NOW() - INTERVAL '%s days'
                     GROUP BY DATE(timestamp)
                     ORDER BY date
                 """, days)
@@ -329,7 +396,7 @@ class DatabaseManager:
                         COUNT(DISTINCT guild_id) as unique_guilds,
                         COUNT(DISTINCT room_id) as active_rooms
                     FROM chat_messages 
-                    WHERE timestamp >= NOW() - INTERVAL %s DAY
+                    WHERE timestamp >= NOW() - INTERVAL '%s days'
                 """, days)
                 
                 return {
@@ -356,6 +423,155 @@ class DatabaseManager:
         except Exception as e:
             print(f"❌ Get live stats error: {e}")
             return {}
+    
+    async def update_room(self, room_id: int, name: str = None, max_servers: int = None, is_active: bool = None) -> bool:
+        """Update room settings."""
+        try:
+            updates = []
+            params = []
+            param_index = 1
+            
+            if name is not None:
+                updates.append(f"name = ${param_index}")
+                params.append(name)
+                param_index += 1
+            
+            if max_servers is not None:
+                updates.append(f"max_servers = ${param_index}")
+                params.append(max_servers)
+                param_index += 1
+                
+            if is_active is not None:
+                updates.append(f"is_active = ${param_index}")
+                params.append(is_active)
+                param_index += 1
+            
+            if not updates:
+                return True  # Nothing to update
+            
+            params.append(room_id)
+            query = f"""
+                UPDATE chat_rooms 
+                SET {', '.join(updates)}
+                WHERE id = ${param_index}
+            """
+            
+            async with self.pool.acquire() as conn:
+                await conn.execute(query, *params)
+                print(f"✅ Updated room {room_id}")
+                return True
+                
+        except Exception as e:
+            print(f"❌ Update room error: {e}")
+            return False
+    
+    async def unregister_channel(self, guild_id: str, channel_id: str, room_id: int) -> bool:
+        """Unregister a channel from a room by setting it as inactive."""
+        try:
+            async with self.pool.acquire() as conn:
+                result = await conn.execute("""
+                    UPDATE chat_channels 
+                    SET is_active = false
+                    WHERE guild_id = $1 AND channel_id = $2 AND room_id = $3
+                """, guild_id, channel_id, room_id)
+                
+                print(f"✅ Unregistered channel {channel_id} from room {room_id}")
+                return True
+                
+        except Exception as e:
+            print(f"❌ Unregister channel error: {e}")
+            return False
+    
+    async def ban_server(self, guild_id: str, guild_name: str, banned_by: str, reason: str = None) -> bool:
+        """Ban a server from subscribing to any chat rooms."""
+        try:
+            async with self.pool.acquire() as conn:
+                # Check if already banned
+                existing_ban = await conn.fetchval("""
+                    SELECT id FROM server_bans 
+                    WHERE guild_id = $1 AND is_active = true
+                """, guild_id)
+                
+                if existing_ban:
+                    print(f"⚠️ Server {guild_id} is already banned")
+                    return True
+                
+                # Insert new ban
+                await conn.execute("""
+                    INSERT INTO server_bans (guild_id, guild_name, banned_by, reason)
+                    VALUES ($1, $2, $3, $4)
+                """, guild_id, guild_name, banned_by, reason)
+                
+                # Deactivate all channels for this server
+                await conn.execute("""
+                    UPDATE chat_channels 
+                    SET is_active = false
+                    WHERE guild_id = $1
+                """, guild_id)
+                
+                print(f"✅ Banned server {guild_id} ({guild_name})")
+                return True
+                
+        except Exception as e:
+            print(f"❌ Ban server error: {e}")
+            return False
+    
+    async def unban_server(self, guild_id: str, unbanned_by: str) -> bool:
+        """Unban a server, allowing them to subscribe to chat rooms again."""
+        try:
+            async with self.pool.acquire() as conn:
+                # Update the ban record
+                result = await conn.execute("""
+                    UPDATE server_bans 
+                    SET is_active = false, unbanned_by = $2, unbanned_at = NOW()
+                    WHERE guild_id = $1 AND is_active = true
+                """, guild_id, unbanned_by)
+                
+                print(f"✅ Unbanned server {guild_id}")
+                return True
+                
+        except Exception as e:
+            print(f"❌ Unban server error: {e}")
+            return False
+    
+    async def is_server_banned(self, guild_id: str) -> bool:
+        """Check if a server is currently banned."""
+        try:
+            async with self.pool.acquire() as conn:
+                result = await conn.fetchval("""
+                    SELECT EXISTS(
+                        SELECT 1 FROM server_bans 
+                        WHERE guild_id = $1 AND is_active = true
+                    )
+                """, guild_id)
+                
+                return bool(result)
+                
+        except Exception as e:
+            print(f"❌ Check server ban error: {e}")
+            return False
+    
+    async def get_banned_servers(self, include_inactive: bool = False) -> List[Dict[str, Any]]:
+        """Get all banned servers."""
+        try:
+            async with self.pool.acquire() as conn:
+                query = """
+                    SELECT guild_id, guild_name, banned_by, banned_at, reason, is_active,
+                           unbanned_by, unbanned_at
+                    FROM server_bans 
+                """
+                
+                if not include_inactive:
+                    query += " WHERE is_active = true"
+                
+                query += " ORDER BY banned_at DESC"
+                
+                results = await conn.fetch(query)
+                return [dict(row) for row in results]
+                
+        except Exception as e:
+            print(f"❌ Get banned servers error: {e}")
+            return []
 
 
 # Global instance

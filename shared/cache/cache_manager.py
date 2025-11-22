@@ -196,6 +196,20 @@ class CacheManager:
             if cached_room_id and int(cached_room_id) == room_id:
                 await redis_client.delete(key)
     
+    async def invalidate_server_cache(self, guild_id: str):
+        """Invalidate all cache entries for a server."""
+        # Invalidate channel registrations for this guild
+        pattern = f"{self.KEY_PREFIX_CHANNEL}:{guild_id}:*"
+        channel_keys = await redis_client.keys(pattern)
+        for key in channel_keys:
+            await redis_client.delete(key)
+        
+        # Invalidate all room channels caches (since they contain channel data)
+        pattern = f"{self.KEY_PREFIX_ROOM_CHANNELS}:*"
+        room_channel_keys = await redis_client.keys(pattern)
+        for key in room_channel_keys:
+            await redis_client.delete(key)
+    
     async def warmup_cache(self, room_data: Dict[str, Any], channels: List[Dict[str, Any]], 
                           permissions: Dict[str, Any]):
         """Warmup cache with fresh data (useful after database updates)."""

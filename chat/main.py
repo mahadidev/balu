@@ -5,7 +5,9 @@ import discord
 from discord.ext import commands
 
 # Add project root to Python path
-sys.path.insert(0, '/app')
+import os
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, project_root)
 
 # Import shared components
 from shared.database.manager import db_manager
@@ -39,8 +41,12 @@ async def on_ready():
     print('  ✅ Redis initialized')
     
     print('💬 Adding chat system cog...')
-    await bot.add_cog(GlobalChatCommands(bot))
-    print('  ✅ Chat system loaded')
+    # Check if cog is already loaded to avoid duplicate loading
+    if 'GlobalChatCommands' not in bot.cogs:
+        await bot.add_cog(GlobalChatCommands(bot))
+        print('  ✅ Chat system loaded')
+    else:
+        print('  ℹ️ Chat system already loaded')
     
     
     # Only sync slash commands if needed (avoid rate limits)

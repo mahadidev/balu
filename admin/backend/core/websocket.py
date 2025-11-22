@@ -156,6 +156,15 @@ class ConnectionManager:
         }
         await self.broadcast_message(message, auth_required=True)
     
+    async def broadcast_new_message(self, message_data: Dict[str, Any]):
+        """Broadcast new chat messages to admin panel."""
+        message = {
+            'type': 'new_message',
+            'data': message_data,
+            'timestamp': datetime.utcnow().isoformat()
+        }
+        await self.broadcast_message(message, auth_required=True)
+    
     # ============================================================================
     # MONITORING TASKS
     # ============================================================================

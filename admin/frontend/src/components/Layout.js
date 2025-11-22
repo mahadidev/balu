@@ -11,7 +11,8 @@ import {
   X,
   Wifi,
   WifiOff,
-  Bell
+  Bell,
+  Shield
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { useWebSocket } from '../hooks/useWebSocket';
@@ -27,6 +28,7 @@ const Layout = ({ children }) => {
     { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
     { name: 'Rooms', href: '/rooms', icon: MessageSquare },
     { name: 'Servers', href: '/servers', icon: Server },
+    { name: 'Banned Servers', href: '/banned-servers', icon: Shield },
     { name: 'Analytics', href: '/analytics', icon: BarChart3 },
     { name: 'Settings', href: '/settings', icon: Settings },
   ];

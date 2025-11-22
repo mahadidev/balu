@@ -5,6 +5,16 @@ import sys
 sys.path.insert(0, '/app')
 from shared.database.manager import db_manager
 from shared.cache.cache_manager import cache_manager
+from formatters import MessageFormatter
+from reply_handler import ReplyHandler
+
+# Import admin panel WebSocket manager (may not be available in standalone mode)
+try:
+    from admin.backend.core.websocket import connection_manager
+    ADMIN_PANEL_AVAILABLE = True
+except ImportError:
+    ADMIN_PANEL_AVAILABLE = False
+    connection_manager = None
 
 
 class GlobalChatCommands(commands.Cog):
@@ -12,6 +22,8 @@ class GlobalChatCommands(commands.Cog):
     
     def __init__(self, bot):
         self.bot = bot
+        self.formatter = MessageFormatter()
+        self.reply_handler = ReplyHandler(bot, db_manager, self.formatter)
     
     @commands.group(name='globalchat', aliases=['gc'], invoke_without_command=True)
     async def globalchat(self, ctx):
@@ -24,8 +36,8 @@ class GlobalChatCommands(commands.Cog):
         
         embed.add_field(
             name="📝 Basic Commands",
-            value="`!register <room_name>` - Register this channel to a room\n"
-                  "`!unregister` - Remove this channel from global chat\n"
+            value="`!subscribe <room_name>` - Subscribe this channel to a room\n"
+                  "`!unsubscribe` - Remove this channel from global chat\n"
                   "`!rooms` - List available rooms",
             inline=False
         )
@@ -39,8 +51,8 @@ class GlobalChatCommands(commands.Cog):
         
         embed.add_field(
             name="💬 Usage",
-            value="Just send messages in registered channels!\n"
-                  "Your messages will appear in all other channels registered to the same room.",
+            value="Just send messages in subscribed channels!\n"
+                  "Your messages will appear in all other channels subscribed to the same room.",
             inline=False
         )
         
@@ -109,18 +121,18 @@ class GlobalChatCommands(commands.Cog):
             if room_id:
                 await ctx.send(f"✅ Created chat room: **{room_name}**\n"
                              f"Room ID: {room_id}\n"
-                             f"Use `!register {room_name}` to connect this channel to the room.")
+                             f"Use `!subscribe {room_name}` to connect this channel to the room.")
             else:
                 await ctx.send(f"❌ Failed to create room '{room_name}'.")
                 
         except Exception as e:
             await ctx.send(f"❌ Error creating room: {str(e)}")
     
-    @commands.command(name='register')
-    async def register_channel(self, ctx, *, room_name: str):
-        """Register this channel to a chat room"""
+    @commands.command(name='subscribe')
+    async def subscribe_channel(self, ctx, *, room_name: str):
+        """Subscribe this channel to a chat room"""
         if not ctx.author.guild_permissions.manage_channels:
-            await ctx.send("❌ You need 'Manage Channels' permission to register channels.")
+            await ctx.send("❌ You need 'Manage Channels' permission to subscribe channels.")
             return
         
         try:
@@ -130,16 +142,16 @@ class GlobalChatCommands(commands.Cog):
                 await ctx.send(f"❌ Room '{room_name}' not found. Use `!rooms` to see available rooms.")
                 return
             
-            # Check if channel is already registered
+            # Check if channel is already subscribed
             existing_room_id = await db_manager.is_channel_registered(
                 str(ctx.guild.id), 
                 str(ctx.channel.id)
             )
             if existing_room_id:
-                await ctx.send(f"❌ This channel is already registered to a room.")
+                await ctx.send(f"❌ This channel is already subscribed to a room.")
                 return
             
-            # Register the channel
+            # Subscribe the channel
             success = await db_manager.register_channel(
                 guild_id=str(ctx.guild.id),
                 channel_id=str(ctx.channel.id),
@@ -154,39 +166,39 @@ class GlobalChatCommands(commands.Cog):
                 await cache_manager.invalidate_channel_registration(str(ctx.guild.id), str(ctx.channel.id))
                 await cache_manager.invalidate_room_channels(room_data['id'])
                 
-                await ctx.send(f"✅ Successfully registered this channel to room **{room_name}**!\n"
+                await ctx.send(f"✅ Successfully subscribed this channel to room **{room_name}**!\n"
                              f"Messages sent here will now appear in all other channels connected to this room.")
             else:
-                await ctx.send(f"❌ Failed to register channel to room '{room_name}'.")
+                await ctx.send(f"❌ Failed to subscribe channel to room '{room_name}'.")
                 
         except Exception as e:
-            await ctx.send(f"❌ Error registering channel: {str(e)}")
+            await ctx.send(f"❌ Error subscribing channel: {str(e)}")
     
-    @commands.command(name='unregister')
-    async def unregister_channel(self, ctx):
+    @commands.command(name='unsubscribe')
+    async def unsubscribe_channel(self, ctx):
         """Remove this channel from global chat"""
         if not ctx.author.guild_permissions.manage_channels:
-            await ctx.send("❌ You need 'Manage Channels' permission to unregister channels.")
+            await ctx.send("❌ You need 'Manage Channels' permission to unsubscribe channels.")
             return
         
         try:
-            # Check if channel is registered
+            # Check if channel is subscribed
             room_id = await db_manager.is_channel_registered(
                 str(ctx.guild.id), 
                 str(ctx.channel.id)
             )
             
             if not room_id:
-                await ctx.send("❌ This channel is not registered to any global chat room.")
+                await ctx.send("❌ This channel is not subscribed to any global chat room.")
                 return
             
-            # TODO: Implement channel unregistration in database manager
+            # TODO: Implement channel unsubscription in database manager
             # For now, just inform the user
-            await ctx.send("⚠️ Channel unregistration is not yet implemented in the new system.\n"
-                         "Please use the admin panel to manage channel registrations.")
+            await ctx.send("⚠️ Channel unsubscription is not yet implemented in the new system.\n"
+                         "Please use the admin panel to manage channel subscriptions.")
                          
         except Exception as e:
-            await ctx.send(f"❌ Error checking channel registration: {str(e)}")
+            await ctx.send(f"❌ Error checking channel subscription: {str(e)}")
     
     @commands.command(name='roominfo')
     async def room_info(self, ctx, *, room_name: str):
@@ -221,7 +233,7 @@ class GlobalChatCommands(commands.Cog):
             embed.add_field(
                 name="📺 Connected Channels",
                 value=f"**Total:** {len(channels)} channels\n" + 
-                      ("\n".join([f"• {ch['guild_name']} #{ch['channel_name']}" for ch in channels[:5]]) if channels else "No channels registered") +
+                      ("\n".join([f"• {ch['guild_name']} #{ch['channel_name']}" for ch in channels[:5]]) if channels else "No channels subscribed") +
                       (f"\n... and {len(channels) - 5} more" if len(channels) > 5 else ""),
                 inline=False
             )
@@ -279,31 +291,48 @@ class GlobalChatCommands(commands.Cog):
         except Exception as e:
             await interaction.response.send_message(f"❌ Error: {str(e)}", ephemeral=True)
     
-    @app_commands.command(name="register", description="Register this channel to a chat room")
-    @app_commands.describe(room_name="Name of the room to register to")
-    async def register_slash(self, interaction: discord.Interaction, room_name: str):
-        """Register this channel to a chat room"""
+    @app_commands.command(name="subscribe", description="Subscribe this channel to a chat room")
+    @app_commands.describe(room_name="Name of the room to subscribe to")
+    async def subscribe_slash(self, interaction: discord.Interaction, room_name: str):
+        """Subscribe this channel to a chat room"""
+        print(f"🔍 Subscribe command received for room: {room_name}")
+        print(f"🔍 Guild: {interaction.guild.id} ({interaction.guild.name})")
+        print(f"🔍 Channel: {interaction.channel.id} ({interaction.channel.name})")
+        print(f"🔍 User: {interaction.user.id} ({interaction.user.name})")
+        
         if not interaction.user.guild_permissions.manage_channels:
-            await interaction.response.send_message("❌ You need 'Manage Channels' permission to register channels.", ephemeral=True)
+            await interaction.response.send_message("❌ You need 'Manage Channels' permission to subscribe channels.", ephemeral=True)
             return
         
         try:
             # Check if room exists
+            print(f"🔍 Looking up room: '{room_name.strip()}'")
             room_data = await db_manager.get_room_by_name(room_name.strip())
+            print(f"🔍 Room lookup result: {room_data}")
             if not room_data:
+                print(f"❌ Room '{room_name}' not found")
                 await interaction.response.send_message(f"❌ Room '{room_name}' not found. Use `/rooms` to see available rooms.", ephemeral=True)
                 return
             
-            # Check if channel is already registered
+            print(f"✅ Found room: {room_data}")
+            
+            # Check if channel is already subscribed
             existing_room_id = await db_manager.is_channel_registered(
                 str(interaction.guild.id), 
                 str(interaction.channel.id)
             )
             if existing_room_id:
-                await interaction.response.send_message("❌ This channel is already registered to a room.", ephemeral=True)
+                await interaction.response.send_message("❌ This channel is already subscribed to a room.", ephemeral=True)
                 return
             
-            # Register the channel
+            # Subscribe the channel
+            print(f"🔍 Attempting to register channel...")
+            print(f"   Guild ID: {interaction.guild.id}")
+            print(f"   Channel ID: {interaction.channel.id}")
+            print(f"   Room ID: {room_data['id']}")
+            print(f"   Guild Name: {interaction.guild.name}")
+            print(f"   Channel Name: {interaction.channel.name}")
+            
             success = await db_manager.register_channel(
                 guild_id=str(interaction.guild.id),
                 channel_id=str(interaction.channel.id),
@@ -313,13 +342,22 @@ class GlobalChatCommands(commands.Cog):
                 registered_by=str(interaction.user.id)
             )
             
+            print(f"🔍 Registration result: {success}")
+            
             if success:
-                await interaction.response.send_message(f"✅ Successfully registered this channel to room **{room_name}**!")
+                await interaction.response.send_message(f"✅ Successfully subscribed this channel to room **{room_name}**!")
             else:
-                await interaction.response.send_message(f"❌ Failed to register channel to room '{room_name}'.", ephemeral=True)
+                await interaction.response.send_message(f"❌ Failed to subscribe channel to room '{room_name}'.", ephemeral=True)
                 
         except Exception as e:
             await interaction.response.send_message(f"❌ Error: {str(e)}", ephemeral=True)
+    
+    @app_commands.command(name="register", description="Register this channel to a chat room")
+    @app_commands.describe(room_name="Name of the room to register to")
+    async def register_slash(self, interaction: discord.Interaction, room_name: str):
+        """Register this channel to a chat room (alias for subscribe)"""
+        # This is just an alias for the subscribe command
+        await self.subscribe_slash(interaction, room_name)
     
     @commands.Cog.listener()
     async def on_message(self, message):
@@ -333,14 +371,14 @@ class GlobalChatCommands(commands.Cog):
             return
         
         try:
-            # Check if this channel is registered to a room
+            # Check if this channel is subscribed to a room
             room_id = await db_manager.is_channel_registered(
                 str(message.guild.id), 
                 str(message.channel.id)
             )
             
             if not room_id:
-                return  # Channel not registered, ignore message
+                return  # Channel not subscribed, ignore message
             
             # Get room permissions
             permissions = await db_manager.get_room_permissions(room_id)
@@ -366,26 +404,50 @@ class GlobalChatCommands(commands.Cog):
                 'content': message.content[:2000],  # Truncate if too long
             }
             
-            # Handle replies
-            if message.reference and message.reference.message_id:
-                reply_data = await db_manager.get_message_for_reply(
-                    str(message.reference.message_id), 
-                    room_id
-                )
-                if reply_data:
-                    message_data.update({
-                        'reply_to_message_id': str(message.reference.message_id),
-                        'reply_to_username': reply_data.get('username'),
-                        'reply_to_content': reply_data.get('content', '')[:200]  # Truncate reply content
-                    })
+            # Handle replies using the proper reply handler
+            reply_data = await self.reply_handler.extract_reply_data(message, room_id)
+            if reply_data:
+                message_data.update({
+                    'reply_to_message_id': reply_data.get('reply_to_message_id'),
+                    'reply_to_username': reply_data.get('reply_to_username'),
+                    'reply_to_content': reply_data.get('reply_to_content', '')[:200],  # Truncate reply content
+                    'reply_to_user_id': reply_data.get('reply_to_user_id')
+                })
             
             # Log message to database
             await db_manager.log_message_fast(message_data)
             
+            # Create reply context if this is a reply
+            reply_context = ""
+            if reply_data:
+                reply_context = self.formatter.format_reply_context(
+                    reply_data.get('reply_to_username'),
+                    reply_data.get('reply_to_content', ''),
+                    reply_data.get('reply_to_user_id')
+                )
+            
+            # Use the proper formatter to create formatted content
+            formatted_content = self.formatter.format_global_message(message, reply_context)
+            
+            # Broadcast to admin panel via WebSocket (if available)
+            if ADMIN_PANEL_AVAILABLE and connection_manager:
+                try:
+                    # Create message data for admin panel with formatting
+                    admin_message_data = {
+                        **message_data,
+                        'room_id': room_id,
+                        'channel_name': message.channel.name,
+                        'formatted_content': formatted_content,
+                        'timestamp': message.created_at.isoformat()
+                    }
+                    await connection_manager.broadcast_new_message(admin_message_data)
+                except Exception as e:
+                    print(f"⚠️ Error broadcasting to admin panel: {e}")
+            
             # Get all channels in this room
             room_channels = await db_manager.get_room_channels(room_id)
             
-            # Format and send message to all other channels
+            # Send formatted message to all other channels
             for channel_data in room_channels:
                 # Skip sending to the same channel
                 if channel_data['guild_id'] == str(message.guild.id) and channel_data['channel_id'] == str(message.channel.id):
@@ -401,15 +463,7 @@ class GlobalChatCommands(commands.Cog):
                     if not channel:
                         continue
                     
-                    # Format the message
-                    formatted_content = f"**{message.author.display_name}** • {message.guild.name}: {message.content}"
-                    
-                    # Handle replies
-                    if message_data.get('reply_to_username'):
-                        reply_line = f"┌─ Replying to @{message_data['reply_to_username']}: {message_data.get('reply_to_content', '')[:100]}"
-                        formatted_content = f"{reply_line}\n└─ {formatted_content}"
-                    
-                    # Send the message
+                    # Send the pre-formatted message
                     await channel.send(formatted_content[:2000])  # Discord message limit
                     
                 except Exception as e:

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useWebSocket } from '../hooks/useWebSocket';
 import LoadingSpinner from '../components/LoadingSpinner';
-import { roomsApi } from '../services/api';
+import { roomsApi, serversApi } from '../services/api';
 
 function RoomDetails() {
   const { roomId } = useParams();
@@ -11,6 +11,9 @@ function RoomDetails() {
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editForm, setEditForm] = useState({ name: '', max_servers: '', is_active: true });
+  const [updating, setUpdating] = useState(false);
   const { wsData } = useWebSocket();
 
   useEffect(() => {
@@ -19,22 +22,35 @@ function RoomDetails() {
 
   useEffect(() => {
     if (wsData?.type === 'message' && wsData?.room_id === parseInt(roomId)) {
-      setMessages(prev => [wsData.data, ...prev].slice(0, 50)); // Keep last 50 messages
+      // Add the new formatted message to the top of the list
+      const newMessage = {
+        ...wsData.data,
+        id: wsData.data.message_id || Date.now(), // Ensure we have an ID for React key
+      };
+      setMessages(prev => [newMessage, ...prev].slice(0, 50)); // Keep last 50 messages
     }
   }, [wsData, roomId]);
 
   const fetchRoomDetails = async () => {
     try {
       setLoading(true);
-      const [roomData, channelsData] = await Promise.all([
+      const [roomData, channelsData, messagesData] = await Promise.all([
         roomsApi.getById(roomId),
-        roomsApi.getChannels(roomId)
+        roomsApi.getChannels(roomId),
+        roomsApi.getMessages(roomId, 50, 0)
       ]);
       
       setRoom(roomData.data);
       setChannels(channelsData.data);
-      setMessages([]);
+      setMessages(messagesData.data);
       setError(null);
+      
+      // Initialize edit form with current room data
+      setEditForm({
+        name: roomData.data.name,
+        max_servers: roomData.data.max_servers,
+        is_active: roomData.data.is_active
+      });
     } catch (err) {
       setError('Failed to load room details');
       console.error('Error fetching room details:', err);
@@ -43,8 +59,83 @@ function RoomDetails() {
     }
   };
 
+  const handleEditRoom = () => {
+    setShowEditModal(true);
+  };
+
+  const handleUpdateRoom = async (e) => {
+    e.preventDefault();
+    setUpdating(true);
+    
+    try {
+      const response = await roomsApi.update(roomId, editForm);
+      setRoom(response.data);
+      setShowEditModal(false);
+      setError(null);
+    } catch (err) {
+      setError('Failed to update room');
+      console.error('Error updating room:', err);
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  const handleRemoveChannel = async (channel) => {
+    if (!window.confirm(`Are you sure you want to remove channel #${channel.channel_name} from this room?`)) {
+      return;
+    }
+    
+    try {
+      await roomsApi.unregisterChannel(roomId, channel.guild_id, channel.channel_id);
+      // Remove channel from local state
+      setChannels(prev => prev.filter(c => 
+        !(c.guild_id === channel.guild_id && c.channel_id === channel.channel_id)
+      ));
+    } catch (err) {
+      setError('Failed to remove channel');
+      console.error('Error removing channel:', err);
+    }
+  };
+
+  const handleBanServer = async (channel) => {
+    const reason = window.prompt(`Enter reason for banning server "${channel.guild_name}":`);
+    if (reason === null) return; // User cancelled
+    
+    if (!window.confirm(`Are you sure you want to BAN the entire server "${channel.guild_name}"? This will prevent them from subscribing to ANY chat rooms until unbanned.`)) {
+      return;
+    }
+    
+    try {
+      await serversApi.banServer({
+        guild_id: channel.guild_id,
+        guild_name: channel.guild_name,
+        reason: reason.trim() || 'No reason provided'
+      });
+      
+      // Remove all channels from this server from local state
+      setChannels(prev => prev.filter(c => c.guild_id !== channel.guild_id));
+      setError(null);
+    } catch (err) {
+      setError('Failed to ban server');
+      console.error('Error banning server:', err);
+    }
+  };
+
   const formatTimestamp = (timestamp) => {
     return new Date(timestamp).toLocaleString();
+  };
+
+  const parseFormattedContent = (content) => {
+    if (!content) return { __html: '' };
+    
+    // Convert Discord-style markdown to HTML
+    let html = content
+      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')  // **bold**
+      .replace(/\*(.*?)\*/g, '<em>$1</em>')              // *italic*
+      .replace(/https:\/\/discord\.com\/channels\/\S+/g, '<a href="$&" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:text-blue-800 underline">Discord Message</a>')  // Discord links
+      .replace(/\n/g, '<br/>');  // Line breaks
+    
+    return { __html: html };
   };
 
   if (loading) return <LoadingSpinner />;
@@ -77,11 +168,19 @@ function RoomDetails() {
             <p className="text-gray-600 mt-1">{room.description}</p>
           )}
         </div>
-        <div className="text-right">
-          <div className="text-sm text-gray-500">Room ID: {room.id}</div>
-          <div className={`text-sm font-medium ${room.is_active ? 'text-green-600' : 'text-gray-500'}`}>
-            {room.is_active ? 'Active' : 'Inactive'}
+        <div className="flex items-center space-x-4">
+          <div className="text-right">
+            <div className="text-sm text-gray-500">Room ID: {room.id}</div>
+            <div className={`text-sm font-medium ${room.is_active ? 'text-green-600' : 'text-gray-500'}`}>
+              {room.is_active ? 'Active' : 'Inactive'}
+            </div>
           </div>
+          <button
+            onClick={handleEditRoom}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium"
+          >
+            ✏️ Edit Room
+          </button>
         </div>
       </div>
 
@@ -194,6 +293,9 @@ function RoomDetails() {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Status
                   </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Actions
+                  </th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
@@ -233,6 +335,24 @@ function RoomDetails() {
                       }`}>
                         {channel.is_active ? 'Active' : 'Inactive'}
                       </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="flex space-x-2">
+                        <button
+                          onClick={() => handleRemoveChannel(channel)}
+                          className="bg-orange-600 hover:bg-orange-700 text-white px-3 py-1 rounded text-sm"
+                          title="Remove channel from room"
+                        >
+                          🗑️ Remove
+                        </button>
+                        <button
+                          onClick={() => handleBanServer(channel)}
+                          className="bg-red-700 hover:bg-red-800 text-white px-3 py-1 rounded text-sm"
+                          title="Ban entire server from all chat rooms"
+                        >
+                          🚫 Ban Server
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -274,9 +394,10 @@ function RoomDetails() {
                           ↳ Replying to {message.reply_to_username}: {message.reply_to_content}
                         </div>
                       )}
-                      <div className="mt-1 text-gray-800">
-                        {message.content}
-                      </div>
+                      <div 
+                        className="mt-1 text-gray-800 whitespace-pre-wrap"
+                        dangerouslySetInnerHTML={parseFormattedContent(message.formatted_content || message.content)}
+                      />
                     </div>
                   </div>
                 </div>
@@ -285,6 +406,71 @@ function RoomDetails() {
           </div>
         )}
       </div>
+
+      {/* Edit Room Modal */}
+      {showEditModal && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+          <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+            <div className="mt-3">
+              <h3 className="text-lg font-medium text-gray-900 mb-4">Edit Room</h3>
+              <form onSubmit={handleUpdateRoom} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Room Name</label>
+                  <input
+                    type="text"
+                    value={editForm.name}
+                    onChange={(e) => setEditForm(prev => ({ ...prev, name: e.target.value }))}
+                    className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
+                    required
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Max Servers</label>
+                  <input
+                    type="number"
+                    value={editForm.max_servers}
+                    onChange={(e) => setEditForm(prev => ({ ...prev, max_servers: parseInt(e.target.value) }))}
+                    className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2"
+                    min="1"
+                    max="200"
+                    required
+                  />
+                </div>
+                
+                <div>
+                  <label className="flex items-center">
+                    <input
+                      type="checkbox"
+                      checked={editForm.is_active}
+                      onChange={(e) => setEditForm(prev => ({ ...prev, is_active: e.target.checked }))}
+                      className="mr-2"
+                    />
+                    <span className="text-sm font-medium text-gray-700">Room is active</span>
+                  </label>
+                </div>
+                
+                <div className="flex justify-end space-x-3 pt-4">
+                  <button
+                    type="button"
+                    onClick={() => setShowEditModal(false)}
+                    className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={updating}
+                    className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md disabled:opacity-50"
+                  >
+                    {updating ? 'Updating...' : 'Update Room'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

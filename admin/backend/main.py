@@ -21,6 +21,7 @@ from .api.auth import router as auth_router, get_current_user
 from .api.rooms import router as rooms_router
 from .api.servers import router as servers_router
 from .api.analytics import router as analytics_router
+# from .api.system_simple import router as system_router
 from shared.database.manager import db_manager
 from shared.cache.redis_client import redis_client
 
@@ -114,6 +115,8 @@ app.include_router(rooms_router, prefix="/api")
 app.include_router(servers_router, prefix="/api")
 app.include_router(analytics_router, prefix="/api")
 
+# Removed duplicate system endpoint definitions to avoid conflicts
+
 
 # ============================================================================
 # WEBSOCKET ENDPOINTS
@@ -186,10 +189,56 @@ async def api_status():
             "database": db_health,
             "cache": redis_health,
             "websocket": ws_info,
-            "debug_mode": settings.debug
+            "debug_mode": settings.debug,
+            "clear_data_available": True
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Status check failed: {str(e)}")
+
+@app.post("/api/status/clear-data")
+async def clear_data_via_status(current_user: Dict[str, Any] = Depends(get_current_user)):
+    """Clear all data via status endpoint."""
+    try:
+        cleared_items = {}
+        
+        # Clear messages and stats from database
+        async with db_manager.session() as session:
+            from shared.database.models import ChatMessage, DailyStats
+            from sqlalchemy import select, delete, func
+            
+            # Count and clear messages
+            message_count_result = await session.execute(select(func.count(ChatMessage.id)))
+            message_count = message_count_result.scalar() or 0
+            
+            if message_count > 0:
+                await session.execute(delete(ChatMessage))
+                cleared_items['messages'] = message_count
+            
+            # Count and clear daily stats
+            stats_count_result = await session.execute(select(func.count(DailyStats.id)))
+            stats_count = stats_count_result.scalar() or 0
+            
+            if stats_count > 0:
+                await session.execute(delete(DailyStats))
+                cleared_items['daily_stats'] = stats_count
+            
+            await session.commit()
+        
+        # Clear Redis cache
+        try:
+            await redis_client.client.flushdb()
+            cleared_items['cache_entries'] = 1
+        except Exception as cache_error:
+            logger.warning(f"Failed to clear Redis cache: {cache_error}")
+        
+        return {
+            "success": True,
+            "message": f"Data cleared successfully! Removed {sum(cleared_items.values())} items.",
+            "cleared_items": cleared_items
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error clearing data: {str(e)}")
 
 @app.get("/api/info")
 async def api_info(current_user: Dict[str, Any] = Depends(get_current_user)):
@@ -214,6 +263,62 @@ async def api_info(current_user: Dict[str, Any] = Depends(get_current_user)):
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Info fetch failed: {str(e)}")
+
+@app.post("/api/clear-data")
+async def clear_all_data_simple(
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Clear all data from the system (simple version)."""
+    try:
+        cleared_items = {}
+        
+        # Clear messages and stats from database
+        try:
+            async with db_manager.session() as session:
+                # Import models to avoid startup issues
+                from shared.database.models import ChatMessage, DailyStats
+                from sqlalchemy import select, delete, func
+                
+                # Count and clear messages
+                message_count_result = await session.execute(select(func.count(ChatMessage.id)))
+                message_count = message_count_result.scalar() or 0
+                
+                if message_count > 0:
+                    await session.execute(delete(ChatMessage))
+                    cleared_items['messages'] = message_count
+                
+                # Count and clear daily stats
+                stats_count_result = await session.execute(select(func.count(DailyStats.id)))
+                stats_count = stats_count_result.scalar() or 0
+                
+                if stats_count > 0:
+                    await session.execute(delete(DailyStats))
+                    cleared_items['daily_stats'] = stats_count
+                
+                await session.commit()
+                
+        except Exception as db_error:
+            logger.error(f"Database error during clear: {db_error}")
+            cleared_items['database_error'] = 1
+        
+        # Clear Redis cache
+        try:
+            await redis_client.client.flushdb()
+            cleared_items['cache_entries'] = 1
+        except Exception as cache_error:
+            logger.warning(f"Failed to clear Redis cache: {cache_error}")
+        
+        return {
+            "success": True,
+            "message": f"Successfully cleared data. Items removed: {sum(cleared_items.values())}",
+            "cleared_items": cleared_items
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error clearing data: {str(e)}"
+        )
 
 
 # ============================================================================

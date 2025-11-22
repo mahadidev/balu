@@ -6,7 +6,7 @@ Handles Discord server monitoring and channel registration management.
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 from fastapi import APIRouter, HTTPException, Depends, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from ..api.auth import get_current_user
 from shared.database.manager import db_manager
@@ -42,6 +42,24 @@ class ServerDetailsResponse(BaseModel):
     channels: List[ChannelResponse]
     statistics: Dict[str, Any]
     permissions: Dict[str, Any]
+
+class ServerBanResponse(BaseModel):
+    guild_id: str
+    guild_name: str
+    banned_by: str
+    banned_at: datetime
+    reason: Optional[str]
+    is_active: bool
+    unbanned_by: Optional[str]
+    unbanned_at: Optional[datetime]
+
+class BanServerRequest(BaseModel):
+    guild_id: str
+    guild_name: str
+    reason: Optional[str] = Field(None, max_length=500, description="Reason for banning")
+
+class UnbanServerRequest(BaseModel):
+    guild_id: str
 
 
 # Router
@@ -105,6 +123,151 @@ async def list_servers(
             status_code=500,
             detail=f"Error fetching servers: {str(e)}"
         )
+
+
+# ============================================================================
+# SERVER BANNING
+# ============================================================================
+
+@router.get("/banned-list", response_model=List[ServerBanResponse])
+async def list_banned_servers(
+    include_inactive: bool = Query(False, description="Include unbanned servers"),
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Get list of all banned servers."""
+    try:
+        banned_servers = await db_manager.get_banned_servers(include_inactive=include_inactive)
+        return [ServerBanResponse(**server) for server in banned_servers]
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error fetching banned servers: {str(e)}"
+        )
+
+@router.post("/bans")
+async def ban_server(
+    request: BanServerRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Ban a Discord server from subscribing to any chat rooms."""
+    try:
+        # Check if server is already banned
+        is_banned = await db_manager.is_server_banned(request.guild_id)
+        if is_banned:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Server {request.guild_id} is already banned"
+            )
+        
+        # Ban the server
+        success = await db_manager.ban_server(
+            guild_id=request.guild_id,
+            guild_name=request.guild_name,
+            banned_by=current_user.get("username", "admin"),
+            reason=request.reason
+        )
+        
+        if not success:
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to ban server"
+            )
+        
+        # Clear related caches - invalidate all cache entries for this server
+        await cache_manager.invalidate_server_cache(request.guild_id)
+        
+        return {
+            "success": True,
+            "message": f"Server {request.guild_name} ({request.guild_id}) has been banned",
+            "guild_id": request.guild_id,
+            "banned_by": current_user.get("username", "admin"),
+            "reason": request.reason
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error banning server: {str(e)}"
+        )
+
+@router.delete("/bans/{guild_id}")
+async def unban_server(
+    guild_id: str,
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Unban a Discord server, allowing them to subscribe to chat rooms again."""
+    try:
+        # Check if server is actually banned
+        is_banned = await db_manager.is_server_banned(guild_id)
+        if not is_banned:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Server {guild_id} is not currently banned"
+            )
+        
+        # Unban the server
+        success = await db_manager.unban_server(
+            guild_id=guild_id,
+            unbanned_by=current_user.get("username", "admin")
+        )
+        
+        if not success:
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to unban server"
+            )
+        
+        # Clear related caches - invalidate all cache entries for this server
+        await cache_manager.invalidate_server_cache(guild_id)
+        
+        return {
+            "success": True,
+            "message": f"Server {guild_id} has been unbanned",
+            "guild_id": guild_id,
+            "unbanned_by": current_user.get("username", "admin")
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error unbanning server: {str(e)}"
+        )
+
+@router.get("/bans/{guild_id}")
+async def check_server_ban_status(
+    guild_id: str,
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Check if a specific server is banned."""
+    try:
+        is_banned = await db_manager.is_server_banned(guild_id)
+        
+        ban_details = None
+        if is_banned:
+            # Get ban details
+            banned_servers = await db_manager.get_banned_servers(include_inactive=False)
+            ban_details = next((server for server in banned_servers if server['guild_id'] == guild_id), None)
+        
+        return {
+            "guild_id": guild_id,
+            "is_banned": is_banned,
+            "ban_details": ban_details
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error checking server ban status: {str(e)}"
+        )
+
+
+# ============================================================================
+# SERVER DETAILS
+# ============================================================================
 
 @router.get("/{guild_id}", response_model=ServerDetailsResponse)
 async def get_server_details(

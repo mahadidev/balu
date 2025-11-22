@@ -18,6 +18,7 @@ export const WebSocketProvider = ({ children }) => {
   const [liveStats, setLiveStats] = useState(null);
   const [notifications, setNotifications] = useState([]);
   const [connectionStatus, setConnectionStatus] = useState('disconnected');
+  const [wsData, setWsData] = useState(null); // For passing WebSocket data to components
   const wsRef = useRef(null);
   const reconnectTimeoutRef = useRef(null);
   const reconnectAttempts = useRef(0);
@@ -36,10 +37,14 @@ export const WebSocketProvider = ({ children }) => {
   }, [isAuthenticated, user]);
 
   const connect = () => {
+    console.log('🚀 Attempting to connect WebSocket...');
+    
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      console.log('ℹ️ WebSocket already connected');
       return;
     }
 
+    console.log('📱 Setting connection status to connecting...');
     setConnectionStatus('connecting');
 
     wsRef.current = createWebSocketConnection(
@@ -67,7 +72,7 @@ export const WebSocketProvider = ({ children }) => {
   };
 
   const handleOpen = () => {
-    console.log('WebSocket connected');
+    console.log('🎉 WebSocket handleOpen triggered');
     setIsConnected(true);
     setConnectionStatus('connected');
     reconnectAttempts.current = 0;
@@ -92,7 +97,7 @@ export const WebSocketProvider = ({ children }) => {
   };
 
   const handleError = (error) => {
-    console.error('WebSocket error:', error);
+    console.error('💥 WebSocket error occurred:', error);
     setConnectionStatus('error');
     
     addNotification({
@@ -103,17 +108,19 @@ export const WebSocketProvider = ({ children }) => {
   };
 
   const handleMessage = (data) => {
+    console.log('🔄 Handling WebSocket message:', data.type);
+    
     switch (data.type) {
       case 'connection_confirmed':
-        console.log('WebSocket connection confirmed');
+        console.log('✅ WebSocket connection confirmed');
         break;
 
       case 'authentication_success':
-        console.log('WebSocket authenticated successfully');
+        console.log('🔐 WebSocket authenticated successfully');
         break;
 
       case 'authentication_error':
-        console.error('WebSocket authentication failed:', data.message);
+        console.error('🚫 WebSocket authentication failed:', data.message);
         addNotification({
           type: 'error',
           title: 'Authentication Error',
@@ -153,6 +160,17 @@ export const WebSocketProvider = ({ children }) => {
       case 'message_activity':
         // Handle real-time message activity updates
         console.log('Message activity:', data.data);
+        break;
+
+      case 'new_message':
+        // Handle new chat messages for admin panel
+        console.log('New message received:', data.data);
+        setWsData({
+          type: 'message',
+          room_id: data.data.room_id,
+          data: data.data,
+          timestamp: data.timestamp
+        });
         break;
 
       case 'pong':
@@ -221,6 +239,7 @@ export const WebSocketProvider = ({ children }) => {
     connectionStatus,
     liveStats,
     notifications,
+    wsData,
     connect,
     disconnect,
     sendMessage,

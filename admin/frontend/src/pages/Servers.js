@@ -59,7 +59,16 @@ function Servers() {
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold text-gray-900">Discord Servers</h1>
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Discord Servers</h1>
+          <p className="text-gray-600 mt-1">Monitor and manage Discord servers</p>
+        </div>
+        <Link 
+          to="/banned-servers"
+          className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-md text-sm font-medium"
+        >
+          🚫 View Banned Servers
+        </Link>
       </div>
 
       {error && (
@@ -198,19 +207,19 @@ function Servers() {
                             <img 
                               className="h-10 w-10 rounded-full" 
                               src={server.icon_url} 
-                              alt={server.name}
+                              alt={server.name || 'Server icon'}
                             />
                           ) : (
                             <div className="h-10 w-10 rounded-full bg-gray-300 flex items-center justify-center">
                               <span className="text-sm font-medium text-gray-700">
-                                {server.name.charAt(0).toUpperCase()}
+                                {(server.name || 'Unknown').charAt(0).toUpperCase()}
                               </span>
                             </div>
                           )}
                         </div>
                         <div className="ml-4">
                           <div className="text-sm font-medium text-gray-900">
-                            {server.name}
+                            {server.name || 'Unknown Server'}
                           </div>
                           <div className="text-sm text-gray-500">
                             ID: {server.guild_id}

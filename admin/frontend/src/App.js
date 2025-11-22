@@ -10,6 +10,7 @@ import Rooms from './pages/Rooms';
 import RoomDetails from './pages/RoomDetails';
 import Servers from './pages/Servers';
 import ServerDetails from './pages/ServerDetails';
+import BannedServers from './pages/BannedServers';
 import Analytics from './pages/Analytics';
 import Settings from './pages/Settings';
 import './App.css';
@@ -69,6 +70,14 @@ function App() {
                 <ProtectedRoute>
                   <Layout>
                     <ServerDetails />
+                  </Layout>
+                </ProtectedRoute>
+              } />
+              
+              <Route path="/banned-servers" element={
+                <ProtectedRoute>
+                  <Layout>
+                    <BannedServers />
                   </Layout>
                 </ProtectedRoute>
               } />

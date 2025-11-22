@@ -5,9 +5,13 @@ Handles reply detection, parsing, and data extraction.
 
 import discord
 import re
+import sys
+import os
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, project_root)
 from typing import Dict, Optional
-from database.db_manager import DatabaseManager
-from .formatters import MessageFormatter
+from shared.database.manager import DatabaseManager
+from formatters import MessageFormatter
 
 
 class ReplyHandler:
@@ -18,13 +22,13 @@ class ReplyHandler:
         self.db = db_manager
         self.formatter = formatter or MessageFormatter()
     
-    async def extract_reply_data(self, message: discord.Message, room_name: str) -> Dict[str, str]:
+    async def extract_reply_data(self, message: discord.Message, room_id: int) -> Dict[str, str]:
         """
         Extract reply data from a Discord message.
         
         Args:
             message: Discord message to analyze
-            room_name: Name of the chat room
+            room_id: ID of the chat room
             
         Returns:
             Dict containing reply data (reply_to_message_id, reply_to_username, reply_to_content)
@@ -36,7 +40,7 @@ class ReplyHandler:
             print(f"🔍 Reply detected! Message ID: {message.reference.message_id}")
             try:
                 # First try to get from our database (for global chat messages)
-                original_msg_data = self.db.get_message_for_reply(str(message.reference.message_id), room_name)
+                original_msg_data = await self.db.get_message_for_reply(str(message.reference.message_id), room_id)
                 if original_msg_data:
                     print(f"✅ Found original message in database: {original_msg_data['username']}")
                     reply_data['reply_to_message_id'] = str(message.reference.message_id)

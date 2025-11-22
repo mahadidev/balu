@@ -160,3 +160,23 @@ class DailyStats(Base):
     __table_args__ = (
         Index('ix_stats_date_room', 'date', 'room_id', unique=True),
     )
+
+class ServerBan(Base):
+    """Banned servers that cannot subscribe to any chat rooms."""
+    __tablename__ = "server_bans"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    guild_id = Column(String(20), unique=True, nullable=False, index=True)  # Discord guild ID
+    guild_name = Column(String(100), nullable=False)
+    banned_by = Column(String(20), nullable=False)  # Discord user ID who banned
+    banned_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    reason = Column(Text, nullable=True)
+    is_active = Column(Boolean, default=True, index=True)
+    unbanned_by = Column(String(20), nullable=True)  # Discord user ID who unbanned
+    unbanned_at = Column(DateTime, nullable=True)
+    
+    # Indexes for performance
+    __table_args__ = (
+        Index('ix_ban_guild_active', 'guild_id', 'is_active'),
+        Index('ix_ban_banned_at', 'banned_at'),
+    )
